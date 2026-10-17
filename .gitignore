@@ -23,8 +23,8 @@ vcam/bin/
 vcam/obj/
 
 # Downloaded tools (scrcpy, rclone, svcl; see .github/workflows/release.yml) and local build outputs
-tools/
-dist/
+/tools/
+/dist/
 
 # Local material: test captures, logs, scratch
 sidecar/evidence/
