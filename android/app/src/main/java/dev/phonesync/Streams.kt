@@ -483,8 +483,10 @@ class AudioStream(private val hello: JSONObject, private val out: StreamServer.O
 }
 
 /**
- * Screen-casting consent and the MediaProjection it yields. Android asks the user on the phone for every session
- * (14+). The consent screen is started by [ConsentActivity] (background starts need "Display over other apps").
+ * Screen-casting consent and the MediaProjection it yields. Android asks for every session (14+) unless Symphone has
+ * the PROJECT_MEDIA app-op (set by the PC whenever it has adb); otherwise the Symphone control accessibility service
+ * confirms the dialog. The consent screen is started by [ConsentActivity] (background starts need "Display over
+ * other apps").
  */
 object Projection {
     @Volatile var lastNeeds = "consent"
@@ -499,6 +501,7 @@ object Projection {
         current?.let { users++; return it }
         val noBackgroundStart = !Settings.canDrawOverlays(Hub.ctx) && !App.foreground
         val l = CountDownLatch(1); waiting = l; result = null
+        ControlService.expectConsent()          // confirms the dialog if Android shows one (no PROJECT_MEDIA app-op)
         Handler(Looper.getMainLooper()).post {
             try {
                 Hub.ctx.startActivity(Intent(Hub.ctx, ConsentActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
@@ -531,7 +534,11 @@ class ConsentActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         val mpm = getSystemService(MediaProjectionManager::class.java)
-        try { startActivityForResult(mpm.createScreenCaptureIntent(), 1) } catch (e: Exception) { Projection.deliver(null); finish() }
+        // 14+: ask for the whole screen directly, so the dialog has no "a single app" choice to make
+        val intent = if (Build.VERSION.SDK_INT >= 34)
+            mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+        else mpm.createScreenCaptureIntent()
+        try { startActivityForResult(intent, 1) } catch (e: Exception) { Projection.deliver(null); finish() }
     }
 
     @Deprecated("Deprecated in Java")

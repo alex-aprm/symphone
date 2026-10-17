@@ -47,7 +47,42 @@ class ControlService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event != null && SystemClock.uptimeMillis() < consentUntil) main.post { confirmConsent() }
+    }
+
+    // ------------------------------------------------------------------ screen-casting consent
+    /**
+     * When a paired PC opens the phone's screen and Symphone itself just asked to cast ([expectConsent]), presses
+     * Start in Android's "start recording?" dialog, so it works without anyone at the phone. Only that dialog, only
+     * while it names Symphone, only within a few seconds of our own request. (With the PROJECT_MEDIA app-op, set by
+     * the PC whenever it has adb, Android doesn't ask at all.)
+     */
+    private fun confirmConsent() {
+        if (SystemClock.uptimeMillis() >= consentUntil) return
+        val label = applicationInfo.loadLabel(packageManager).toString()
+        for (w in windows) {
+            val root = w.root ?: continue
+            val pkg = root.packageName?.toString() ?: ""
+            if (pkg == packageName || !(pkg.contains("systemui") || pkg == "android")) continue
+            if (root.findAccessibilityNodeInfosByText(label).isEmpty()) continue    // not our request
+            val button = root.findAccessibilityNodeInfosByViewId("android:id/button1").firstOrNull { it.isEnabled }
+                ?: findStart(root)
+            if (button != null && button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                Log.i(TAG, "screen casting allowed for the PC")
+                consentUntil = 0
+                return
+            }
+        }
+        main.postDelayed({ confirmConsent() }, 250)           // the dialog may still be building
+    }
+
+    private fun findStart(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val t = (n.text ?: n.contentDescription)?.toString()?.trim()?.lowercase() ?: ""
+        if (n.isClickable && n.isEnabled && START.any { t == it || t.startsWith("$it ") }) return n
+        for (i in 0 until n.childCount) n.getChild(i)?.let { c -> findStart(c)?.let { return it } }
+        return null
+    }
     override fun onInterrupt() {}
 
     // ------------------------------------------------------------------ gestures
@@ -398,6 +433,17 @@ class ControlService : AccessibilityService() {
     companion object {
         const val TAG = "SymphoneCtl"
         @Volatile var instance: ControlService? = null
+        @Volatile private var consentUntil = 0L
+        /** The consent dialog's confirm button, when it has no standard id (a few languages; ids are tried first). */
+        private val START = listOf("start now", "start", "share screen", "share", "начать", "начать сейчас",
+            "iniciar", "iniciar agora", "começar", "démarrer", "starten", "jetzt starten", "avvia", "开始", "立即开始")
+
+        /** Symphone is about to ask Android for screen casting: confirm that dialog for the next few seconds. */
+        fun expectConsent() {
+            val s = instance ?: return
+            consentUntil = SystemClock.uptimeMillis() + 15_000
+            s.main.postDelayed({ s.confirmConsent() }, 300)
+        }
 
         fun enabled(ctx: Context): Boolean {
             val me = ComponentName(ctx, ControlService::class.java).flattenToString()

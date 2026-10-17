@@ -9,7 +9,7 @@ from .config import ADB, USB_FWD_PORT, PHONE_PORT, TOOLS_DIR, APP_DIR, NO_WINDOW
 
 log = logging.getLogger("adb")
 PKG = "dev.phonesync"
-APK_VERSION = 12                  # versionCode of the phone app bundled with this PC app
+APK_VERSION = 13                  # versionCode of the phone app bundled with this PC app
 APK = next((p for p in (TOOLS_DIR / "Symphone.apk", APP_DIR / "dist" / "Symphone.apk") if p.exists()), None)
 ALLOW_EMULATOR = os.environ.get("PHONESYNC_EMULATOR") == "1"     # treat emulators like USB phones (testing)
 # testing: only use these adb serials (comma separated), e.g. an emulator while a real phone is plugged in
@@ -137,13 +137,21 @@ class AdbManager:
             f"appops set {PKG} MANAGE_EXTERNAL_STORAGE allow",
             f"appops set {PKG} SYSTEM_ALERT_WINDOW allow",
             f"appops set {PKG} RUN_ANY_IN_BACKGROUND allow",
+            # Screen casting without the "start recording?" dialog in debugging-free mode (survives reboots and
+            # turning debugging off; Android checks this before asking, as for the system's own Cast)
+            f"appops set {PKG} PROJECT_MEDIA allow",
+            # ...and touch/keys from the PC in that mode: Symphone's accessibility service, added to (never replacing)
+            # the services already on. Android 13+ blocks turning it on by hand for sideloaded apps ("restricted").
+            f"cur=$(settings get secure enabled_accessibility_services); case \"$cur\" in *{PKG}/*) ;; "
+            f"null|'') settings put secure enabled_accessibility_services {PKG}/.ControlService ;; "
+            f"*) settings put secure enabled_accessibility_services \"$cur:{PKG}/.ControlService\" ;; esac; "
+            f"settings put secure accessibility_enabled 1",
             f"cmd notification allow_listener {PKG}/{PKG}.NotifListener",
             f"dumpsys deviceidle whitelist +{PKG}",
             f"pm grant {PKG} android.permission.POST_NOTIFICATIONS",
             f"pm grant {PKG} android.permission.READ_PHONE_STATE",
             f"pm grant {PKG} android.permission.ANSWER_PHONE_CALLS",
             f"pm grant {PKG} android.permission.CAMERA",
-            "settings put global adb_wifi_enabled 1",
             # nubia/ZTE: allow background starts (otherwise "Blocked by AutoLaunch" after updates/reboots)
             f"dumpsys AutoLaunch -wl {PKG}",
             f"dumpsys AutoLaunch -a {PKG}",

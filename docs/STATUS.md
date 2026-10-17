@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.2** (Windows app; phone app 2.7.2, versionCode 12).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.3** (Windows app; phone app 2.7.3, versionCode 13).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,12 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.7.3
+
+| Request | Status | Notes |
+|---|---|---|
+| Phone view without wireless debugging asks "start recording?" every time | ✅ | Whenever the PC has adb (setup, USB, debugging on once) it grants Symphone the `PROJECT_MEDIA` app-op: Android then allows casting without the dialog, also after reboots and with debugging off (verified: stream in ~3 s, no dialog). Without it, the Symphone control accessibility service confirms Symphone's own dialog (only that dialog, only right after our request; verified on Android 15). Casting asks for the whole screen directly (no "single app" choice). The PC also turns on that accessibility service (keeping others) and no longer switches wireless debugging back on. App windows on their own displays still need adb (shell-only virtual displays); without it an app opens on the phone's screen in the phone window. |
 
 ## 2.7.2
 
