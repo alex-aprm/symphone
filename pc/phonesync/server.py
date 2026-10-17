@@ -109,7 +109,7 @@ def build_app(core) -> web.Application:
         import segno
         payload = core.hub.qr_payload()
         qr = segno.make(payload, error="m")
-        svg = qr.svg_inline(scale=6, dark="#000", light=None, border=2)
+        svg = qr.svg_inline(scale=6, dark="#000", light=None, border=2, omitsize=True)
         core.ui_event("state", core.state())
         return j({"ok": True, "payload": payload, "svg": svg, "ips": payload.split("&a=")[1].split("&")[0]})
     r.add_post("/api/pair/start", pair_start)
@@ -127,11 +127,11 @@ def build_app(core) -> web.Application:
         if op == "apk-qr":                      # QR code: download the phone app
             import segno
             return j({"ok": True, "url": setup.APK_URL,
-                      "svg": segno.make(setup.APK_URL, error="m").svg_inline(scale=6, dark="#000", light=None, border=2)})
+                      "svg": segno.make(setup.APK_URL, error="m").svg_inline(scale=6, dark="#000", light=None, border=2, omitsize=True)})
         if op == "adb-pair":                    # QR code for Wireless debugging > Pair device with QR code
             import segno
             text = core.adbm.start_qr_pair()
-            return j({"ok": True, "svg": segno.make(text, error="m").svg_inline(scale=6, dark="#000", light=None, border=2)})
+            return j({"ok": True, "svg": segno.make(text, error="m").svg_inline(scale=6, dark="#000", light=None, border=2, omitsize=True)})
         if op == "adb-pair-stop":
             core.adbm.stop_qr_pair()
             return j({"ok": True})

@@ -384,7 +384,7 @@ input[type=range]:hover::-webkit-slider-thumb { box-shadow: inset 0 0 0 3px var(
 
 /* ================================================================ setup wizard */
 .setup { position: fixed; inset: 0; z-index: 75; display: flex; background: var(--bg); }
-:root.mica .setup { background: color-mix(in srgb, var(--flyout) 92%, transparent); backdrop-filter: blur(30px); }
+:root.mica .setup { background: var(--flyout); }       /* opaque: the app behind must not show through */
 .setup-rail { width: 280px; flex: none; padding: 28px 20px; display: flex; flex-direction: column; gap: 18px;
   border-right: 1px solid var(--stroke); }
 .setup-brand { display: flex; align-items: center; gap: 10px; font: 600 15px var(--font-d); }
