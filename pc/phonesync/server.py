@@ -2,7 +2,9 @@
 import asyncio
 import json
 import logging
+import mimetypes
 import os
+import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
@@ -10,9 +12,10 @@ import aiohttp
 from aiohttp import web
 
 from .config import UI_DIR, UI_PORT, ICON_DIR, settings
-from . import winutil
+from . import desktop
 
 log = logging.getLogger("ui")
+mimetypes.add_type("font/woff2", ".woff2")      # the icon font (not in every system's table)
 
 
 ALLOWED_HOSTS = {f"127.0.0.1:{UI_PORT}", f"localhost:{UI_PORT}"}
@@ -180,12 +183,12 @@ def build_app(core) -> web.Application:
             core.switch_device(dev)
         elif op == "forget":
             await core.hub.forget(dev)
-            winutil.install_send_to(core.hub)
+            desktop.install_send_to(core.hub)
         elif op == "rename":
             settings.upsert_device(dev, display_name=str(b.get("name", "")).strip()[:60])
             if dev == settings["active_device"]:
                 core.drive.stop()
-            winutil.install_send_to(core.hub)
+            desktop.install_send_to(core.hub)
         elif op == "master":
             p = core.hub.phones.get(dev)
             if p and p.connected:
@@ -203,7 +206,7 @@ def build_app(core) -> web.Application:
     r.add_post("/api/reconnect", reconnect)
 
     async def theme(req):
-        return j(winutil.theme())
+        return j(await asyncio.to_thread(desktop.theme))
     r.add_get("/api/theme", theme)
 
     async def phone_picture(req):
@@ -228,19 +231,20 @@ def build_app(core) -> web.Application:
                     pass
         if changed:
             asyncio.ensure_future(refresh_icons())
-        data = await asyncio.to_thread(phonepic.png, dev, h, winutil.theme()["accent"])
+        accent = (await asyncio.to_thread(desktop.theme))["accent"]
+        data = await asyncio.to_thread(phonepic.png, dev, h, accent)
         return web.Response(body=data, content_type="image/png", headers={"Cache-Control": "max-age=60"})
 
     async def refresh_icons():
-        """Explorer entry and Send to shortcuts show the current phone picture."""
+        """The file manager entry and Send to shortcuts show the current phone picture."""
         from . import phonepic
         from .drive import MOUNT_DIR
         info_path = phonepic.ICON_DIR / f"model-{settings['device_id']}.json"
         try:
-            await asyncio.to_thread(winutil.install_send_to, core.hub)
-            if core.drive.as_device and core.drive.mounted:
-                ico = await asyncio.to_thread(phonepic.ico, settings["device_id"] or "", winutil.theme()["accent"])
-                await asyncio.to_thread(winutil.register_phone_folder, settings.phone_name(), MOUNT_DIR, ico)
+            await asyncio.to_thread(desktop.install_send_to, core.hub)
+            if desktop.IS_WIN and core.drive.as_device and core.drive.mounted:
+                ico = await asyncio.to_thread(phonepic.ico, settings["device_id"] or "", desktop.theme()["accent"])
+                await asyncio.to_thread(desktop.register_phone_folder, settings.phone_name(), MOUNT_DIR, ico)
             if info_path.exists():
                 d = json.loads(info_path.read_text("utf-8"))
                 d["icons_done"] = True
@@ -294,7 +298,7 @@ def build_app(core) -> web.Application:
         old_letter = settings["drive_letter"]
         settings.update(**upd)
         if "autostart" in upd:
-            winutil.set_autostart(bool(upd["autostart"]))
+            desktop.set_autostart(bool(upd["autostart"]))
         if "wfd_prefer" in upd or "wifi_direct" in upd:      # tell connected phones (join / leave the direct link)
             core.nearby._wfd_creds()
             for p in core.hub.phones.values():
@@ -309,7 +313,7 @@ def build_app(core) -> web.Application:
             elif screen_ws.kbd._serial:
                 await screen_ws.kbd.release()
         if "display_name" in upd:
-            winutil.install_send_to(core.hub)
+            desktop.install_send_to(core.hub)
         if "pc_name" in upd:
             for p in core.hub.phones.values():
                 if p.connected:
@@ -317,7 +321,7 @@ def build_app(core) -> web.Application:
         if ("drive_letter" in upd and upd["drive_letter"] != old_letter) or upd.get("drive_enabled") is False                 or "drive_mode" in upd or "display_name" in upd:
             core.drive.stop()          # the drive loop remounts with the new settings
             if upd.get("drive_enabled") is False or upd.get("drive_mode") == "letter":
-                winutil.unregister_phone_folder()
+                desktop.unregister_phone_folder()
         return j({"ok": True})
     r.add_post("/api/settings", set_settings)
 
@@ -380,12 +384,12 @@ def build_app(core) -> web.Application:
     r.add_post("/api/media/download", media_download)
 
     async def open_local(req):
-        """Downloads (if needed) and opens a media item with the default Windows app."""
+        """Downloads (if needed) and opens a media item with the default app."""
         mid = int(req.match_info["id"])
         async def go():
             paths = await core.media.download([mid])
             if paths:
-                os.startfile(paths[0])
+                desktop.open_path(paths[0])
             return j({"ok": bool(paths)})
         return await guard(go)
     r.add_post("/api/media/{id}/open", open_local)
@@ -408,7 +412,7 @@ def build_app(core) -> web.Application:
         """Multipart upload from the UI (drag & drop). Streams each part to disk, then multipath to the phone."""
         target = req.query.get("dir", "/Download/PC")
         reader = await req.multipart()
-        tmpdir = Path(os.environ.get("TEMP", ".")) / "phonesync-up"
+        tmpdir = Path(tempfile.gettempdir()) / "phonesync-up"
         tmpdir.mkdir(exist_ok=True)
         files = []
         while (part := await reader.next()) is not None:
@@ -690,7 +694,9 @@ def build_app(core) -> web.Application:
         p = b.get("path") or settings[b.get("setting", "downloads_dir")]
         if not str(p).startswith("ms-settings:"):
             Path(p).mkdir(parents=True, exist_ok=True)
-        os.startfile(p)
+        elif not desktop.IS_WIN:
+            return j({"ok": False})
+        desktop.open_path(p)
         return j({"ok": True})
     r.add_post("/api/open", open_path)
 

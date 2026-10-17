@@ -1,14 +1,13 @@
 """Shared clipboard: the PC clipboard follows the phone's and vice versa (text)."""
 import asyncio
-import ctypes
 import logging
 
 from .adb import shell, PKG
-from .config import settings
-from . import winutil
+from .config import IS_LINUX, settings
+from . import desktop
 
 log = logging.getLogger("clip")
-_seq = ctypes.windll.user32.GetClipboardSequenceNumber
+_seq = desktop.clipboard_seq
 
 
 class ClipSync:
@@ -25,7 +24,7 @@ class ClipSync:
         if not text:
             return
         self.last = text
-        winutil.set_clipboard(text)
+        desktop.set_clipboard(text)
         self._seq = _seq()
 
     def from_phone(self, phone, text: str):
@@ -38,18 +37,18 @@ class ClipSync:
         return [p for p in hub.phones.values() if p.connected and (p is hub.active or p.is_master)]
 
     async def loop(self):
-        self._seq = _seq()
+        self._seq = await asyncio.to_thread(_seq)
         n = 0
         while True:
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(1.0 if IS_LINUX else 0.4)     # Linux: reading the clipboard runs xclip / wl-paste
             n += 1
             try:
                 if settings["clipboard_sync"]:
-                    s = _seq()
+                    s = await asyncio.to_thread(_seq)
                     if s != self._seq:
                         self._seq = s
                         await asyncio.sleep(0.05)          # let the source app finish writing all formats
-                        text = winutil.get_clipboard()
+                        text = await asyncio.to_thread(desktop.get_clipboard)
                         if text and text != self.last and len(text) < 1_000_000:
                             self.last = text
                             for p in self._targets():
@@ -57,7 +56,7 @@ class ClipSync:
                                     await p.post_json("/api/clipboard", {"text": text}, timeout=5)
                                 except Exception as e:
                                     log.info("clipboard -> %s: %s", p.name, e)
-                    if n % 50 == 1:
+                    if n % (20 if IS_LINUX else 50) == 1:
                         await self._ensure_helpers()
             except Exception:
                 log.exception("clip loop")

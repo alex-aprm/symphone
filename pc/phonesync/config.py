@@ -1,10 +1,11 @@
-"""Paths, persistent settings and DPAPI-protected secrets."""
+"""Paths, persistent settings and protected secrets (DPAPI on Windows, a per-user key file elsewhere)."""
 import base64
-import ctypes
-import ctypes.wintypes as wt
 import json
 import os
 import secrets
+import shutil
+import socket
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -17,6 +18,13 @@ DAV_PROXY_PORT = 47811   # local multipath WebDAV proxy for the Explorer drive
 USB_FWD_PORT = 47910     # adb forward -> phone:47900
 PHONE_PORT = 47900
 UDP_PORT = 47800
+
+IS_WIN = sys.platform == "win32"
+IS_MAC = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
+PLATFORM = "windows" if IS_WIN else "mac" if IS_MAC else "linux"
+EXE = ".exe" if IS_WIN else ""
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)     # creationflags: no console window for helpers (Windows)
 
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys._MEIPASS)          # bundled resources
@@ -35,14 +43,30 @@ def _find_tool(*candidates: Path) -> Path:
     return candidates[0]
 
 
-TOOLS_DIR = _find_tool(APP_DIR / "tools", BASE_DIR / "tools", Path(__file__).resolve().parents[2] / "tools")
-SCRCPY_DIR = next(TOOLS_DIR.glob("scrcpy-win64-*"), TOOLS_DIR / "scrcpy")
-ADB = SCRCPY_DIR / "adb.exe"
-SCRCPY = SCRCPY_DIR / "scrcpy.exe"
-RCLONE = next(TOOLS_DIR.glob("rclone-*/rclone.exe"), TOOLS_DIR / "rclone.exe")
+def _system_tool(path: Path) -> Path:
+    """A bundled tool, or the same program from PATH when running from source without the bundle (macOS/Linux)."""
+    if path.exists():
+        return path
+    found = shutil.which(path.name)
+    return Path(found) if found else path
 
-DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
-CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / APP_NAME
+
+TOOLS_DIR = _find_tool(APP_DIR / "tools", BASE_DIR / "tools", Path(__file__).resolve().parents[2] / "tools")
+# scrcpy-win64-v5.0.1 (Windows zip), scrcpy-linux-x86_64-v5.0.1 / scrcpy-macos-aarch64-v5.0.1 or scrcpy (bundled)
+SCRCPY_DIR = next((d for d in sorted(TOOLS_DIR.glob("scrcpy*")) if (d / f"adb{EXE}").exists()), TOOLS_DIR / "scrcpy")
+ADB = _system_tool(SCRCPY_DIR / f"adb{EXE}")
+SCRCPY = _system_tool(SCRCPY_DIR / f"scrcpy{EXE}")
+RCLONE = _system_tool(next(TOOLS_DIR.glob(f"rclone*/rclone{EXE}"), TOOLS_DIR / f"rclone{EXE}"))
+
+if IS_WIN:
+    DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
+    CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / APP_NAME
+elif IS_MAC:
+    DATA_DIR = Path.home() / "Library" / "Application Support" / APP_NAME
+    CACHE_DIR = Path.home() / "Library" / "Caches" / APP_NAME
+else:
+    DATA_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / APP_NAME.lower()
+    CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / APP_NAME.lower()
 # The app used to be called PhoneSync: its settings (pairings) and caches move over once.
 for _new in (DATA_DIR, CACHE_DIR):
     _old = _new.with_name("PhoneSync")
@@ -198,47 +222,86 @@ class Settings:
         return d.get("display_name") or d.get("device_name") or "Phone"
 
     def pc_name(self) -> str:
-        return self["pc_name"] or os.environ.get("COMPUTERNAME", "PC")
+        return self["pc_name"] or _host_name()
 
-    # ---- PIN (DPAPI, current user) ----
+    # ---- PIN (DPAPI or the key file: current user only) ----
     def set_pin(self, pin: str):
-        self["pin"] = base64.b64encode(dpapi_protect(pin.encode())).decode() if pin else ""
+        self["pin"] = base64.b64encode(protect(pin.encode())).decode() if pin else ""
 
     def get_pin(self) -> str:
         v = self["pin"]
         if not v:
             return ""
         try:
-            return dpapi_unprotect(base64.b64decode(v)).decode()
+            return unprotect(base64.b64decode(v)).decode()
         except Exception:
             return ""
 
 
-class _Blob(ctypes.Structure):
-    _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+def _host_name() -> str:
+    if IS_WIN:
+        return os.environ.get("COMPUTERNAME", "PC")
+    if IS_MAC:
+        try:          # the name shown in System Settings > General > About (the host name is "Anns-MacBook.local")
+            name = subprocess.run(["scutil", "--get", "ComputerName"], capture_output=True, text=True,
+                                  timeout=3).stdout.strip()
+            if name:
+                return name
+        except Exception:
+            pass
+    return socket.gethostname().split(".")[0] or "PC"
 
 
-def _blob(data: bytes) -> _Blob:
-    buf = ctypes.create_string_buffer(data, len(data))
-    return _Blob(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+def protect(data: bytes) -> bytes:
+    if IS_WIN:
+        return dpapi_protect(data)
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    nonce = os.urandom(12)
+    return nonce + AESGCM(_user_key()).encrypt(nonce, data, None)
 
 
-def _crypt(fn, data: bytes) -> bytes:
-    out = _Blob()
-    if not fn(ctypes.byref(_blob(data)), None, None, None, None, 0x1, ctypes.byref(out)):
-        raise ctypes.WinError()
-    try:
-        return ctypes.string_at(out.pbData, out.cbData)
-    finally:
-        ctypes.windll.kernel32.LocalFree(out.pbData)
+def unprotect(data: bytes) -> bytes:
+    if IS_WIN:
+        return dpapi_unprotect(data)
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    return AESGCM(_user_key()).decrypt(data[:12], data[12:], None)
 
 
-def dpapi_protect(data: bytes) -> bytes:
-    return _crypt(ctypes.windll.crypt32.CryptProtectData, data)
+def _user_key() -> bytes:
+    """macOS/Linux: a random key readable only by this user (in place of DPAPI), kept apart from settings.json."""
+    p = DATA_DIR / ".key"
+    if not p.exists():
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(secrets.token_bytes(32))
+    return p.read_bytes()
 
 
-def dpapi_unprotect(data: bytes) -> bytes:
-    return _crypt(ctypes.windll.crypt32.CryptUnprotectData, data)
+if IS_WIN:
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class _Blob(ctypes.Structure):
+        _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    def _blob(data: bytes) -> _Blob:
+        buf = ctypes.create_string_buffer(data, len(data))
+        return _Blob(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+
+    def _crypt(fn, data: bytes) -> bytes:
+        out = _Blob()
+        if not fn(ctypes.byref(_blob(data)), None, None, None, None, 0x1, ctypes.byref(out)):
+            raise ctypes.WinError()
+        try:
+            return ctypes.string_at(out.pbData, out.cbData)
+        finally:
+            ctypes.windll.kernel32.LocalFree(out.pbData)
+
+    def dpapi_protect(data: bytes) -> bytes:
+        return _crypt(ctypes.windll.crypt32.CryptProtectData, data)
+
+    def dpapi_unprotect(data: bytes) -> bytes:
+        return _crypt(ctypes.windll.crypt32.CryptUnprotectData, data)
 
 
 settings = Settings()

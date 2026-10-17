@@ -23,10 +23,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import ADB, SCRCPY_DIR
+from .config import ADB, SCRCPY_DIR, NO_WINDOW
 
 log = logging.getLogger("scrcpy")
-NO_WINDOW = subprocess.CREATE_NO_WINDOW
 
 SERVER_VERSION = "5.0.1"
 SERVER_LOCAL = Path(os.environ.get("PHONESYNC_SCRCPY_SERVER") or SCRCPY_DIR / "scrcpy-server")   # env: test builds
@@ -101,8 +100,11 @@ class ScrcpyError(RuntimeError):
 
 async def adb(*args, serial=None, timeout=20) -> tuple[int, str]:
     cmd = [str(ADB)] + (["-s", serial] if serial else []) + [str(a) for a in args]
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
-                                                stderr=asyncio.subprocess.STDOUT, creationflags=NO_WINDOW)
+    try:
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.STDOUT, creationflags=NO_WINDOW)
+    except FileNotFoundError:
+        return -1, f"adb not found ({ADB})"
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:

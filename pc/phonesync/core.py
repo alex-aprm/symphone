@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .adb import AdbManager, shell as adb_shell, PKG
 from .audio import PcToPhone, BluetoothSink
-from .config import settings, CACHE_DIR
+from .config import settings, CACHE_DIR, IS_WIN
 from .davproxy import DavProxy
 from .drive import Drive
 from .media import MediaIndex
@@ -17,10 +17,27 @@ from .mirror import Mirror
 from .notify import Notifier
 from .phone import PhoneHub
 from .transfer import TransferManager
-from . import winutil
+from . import desktop
 
 log = logging.getLogger("core")
 ANSWER_WORDS = re.compile(r"answer|accept|ответ|принять|відповісти|annehmen|répondre|contestar|rispondi", re.I)
+
+
+class NoSidecar:
+    """The side display needs the Windows virtual display driver."""
+    ERROR = "The side display is available on Windows only"
+
+    def status(self) -> dict:
+        return {"state": "unavailable", "error": self.ERROR}
+
+    async def start(self, *a, **kw) -> dict:
+        return {"state": "error", "error": self.ERROR}
+
+    async def set_scale(self, *a) -> dict:
+        return self.status()
+
+    async def stop(self):
+        pass
 
 
 class Core:
@@ -38,11 +55,14 @@ class Core:
         self.drive = Drive(self.phone)
         self.proxy = DavProxy(self.phone)
         from .camfeed import CameraFeed
-        from .sidecar import Sidecar
         from .clipsync import ClipSync
         from .nearby import Nearby
         self.camfeed = CameraFeed(self)
-        self.sidecar = Sidecar()
+        if IS_WIN:
+            from .sidecar import Sidecar
+            self.sidecar = Sidecar()
+        else:
+            self.sidecar = NoSidecar()
         self.clip = ClipSync(self)
         self.nearby = Nearby(self)
         self.notif_history: list[dict] = self._load_history()
@@ -238,7 +258,7 @@ class Core:
         self.clip.set_local(text)
         url = re.match(r"https?://\S+$", text.strip())
         self.notifier.simple(f"Copied from {phone.name}", text[:200],
-                             on_click=(lambda: os.startfile(text.strip())) if url else None)
+                             on_click=(lambda: desktop.open_path(text.strip())) if url else None)
 
     @staticmethod
     def _safe_status(obj):
@@ -355,7 +375,7 @@ class Core:
         return await self.transfers.send_paths([Path(p) for p in paths], remote_dir, phone=phone)
 
     async def push_clipboard(self):
-        text = winutil.get_clipboard()
+        text = await asyncio.to_thread(desktop.get_clipboard)
         if text:
             await self.phone.post_json("/api/clipboard", {"text": text})
         return {"ok": bool(text)}

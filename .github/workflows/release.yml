@@ -1,7 +1,10 @@
 # Builds everything and publishes a GitHub release when a version tag (v1.2.3) is pushed.
 #   apk            Android app (android.yml)
 #   scrcpy-server  scrcpy 5.0.1 server with scrcpy/symphone-server.patch
-#   windows        native helpers (MSVC), virtual camera, Windows app (PyInstaller), zip + release
+#   windows        native helpers (MSVC), virtual camera, Windows app (PyInstaller), installer + zip
+#   linux          Linux app (PyInstaller, Qt WebEngine), tar.gz + .deb
+#   macos          macOS app (PyInstaller, Apple silicon), .dmg
+#   release        all of the above as one GitHub release
 name: Release
 
 on:
@@ -114,11 +117,86 @@ jobs:
             Symphone-*.zip
             Symphone*.apk
 
+  posix:
+    needs: [apk, scrcpy-server]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04          # oldest glibc the build should run on
+            name: linux
+            scrcpy: linux-x86_64
+            rclone: linux-amd64
+          - os: macos-14
+            name: macos
+            scrcpy: macos-aarch64
+            rclone: osx-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: apk
+          path: dist
+      - uses: actions/download-artifact@v5
+        with:
+          name: scrcpy-server
+          path: server
+
+      - name: Tools (scrcpy + patched server, rclone)
+        run: |
+          mkdir -p tools "$RUNNER_TEMP/dl"
+          curl -sSLf -o "$RUNNER_TEMP/dl/scrcpy.tgz" "https://github.com/Genymobile/scrcpy/releases/download/v$SCRCPY_VERSION/scrcpy-${{ matrix.scrcpy }}-v$SCRCPY_VERSION.tar.gz"
+          tar -xzf "$RUNNER_TEMP/dl/scrcpy.tgz" -C tools
+          cp server/scrcpy-server tools/scrcpy-${{ matrix.scrcpy }}-v$SCRCPY_VERSION/scrcpy-server
+          curl -sSLf -o "$RUNNER_TEMP/dl/rclone.zip" "https://downloads.rclone.org/v$RCLONE_VERSION/rclone-v$RCLONE_VERSION-${{ matrix.rclone }}.zip"
+          unzip -q "$RUNNER_TEMP/dl/rclone.zip" -d tools
+          ls tools
+
+      - name: System packages
+        if: matrix.name == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxcb-cursor0 libegl1 libxkbcommon-x11-0
+
+      - name: App and packages
+        run: |
+          ver=$([ "$GITHUB_REF_TYPE" = tag ] && echo "${GITHUB_REF_NAME#v}" || echo "0.0.0-dev.$GITHUB_RUN_NUMBER")
+          python -m venv pc/.venv
+          pc/.venv/bin/python -m pip install --upgrade pip
+          pc/.venv/bin/pip install -r pc/requirements.txt
+          sh pc/build.sh "$ver"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: symphone-${{ matrix.name }}
+          path: |
+            dist/Symphone-*.tar.gz
+            dist/symphone_*.deb
+            dist/Symphone-*.dmg
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [windows, posix]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: symphone-*
+          path: out
+          merge-multiple: true
+
       - name: Publish release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: pwsh
         run: |
-          $files = "${{ steps.pkg.outputs.files }}".Split(" ")
-          gh release create $env:GITHUB_REF_NAME @files --title "Symphone ${{ steps.pkg.outputs.ver }}" --generate-notes
+          ver="${GITHUB_REF_NAME#v}"
+          cd out
+          # stable names too: releases/latest/download/Symphone.dmg, symphone_amd64.deb ...
+          cp "Symphone-$ver-macos-arm64.dmg" Symphone.dmg
+          cp "symphone_${ver}_amd64.deb" symphone_amd64.deb
+          ls -la
+          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --title "Symphone $ver" --generate-notes

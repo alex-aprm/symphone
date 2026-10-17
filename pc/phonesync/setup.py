@@ -1,17 +1,17 @@
 """First-run setup (the wizard in the UI): what is installed on this PC, the phone's checklist, the optional extras.
 
-Extras need administrator rights; they are installed by setup/extras.ps1 (bundled with the app), started elevated
-only when the user clicks "Install" in the wizard or in Settings.
+Extras (Windows) need administrator rights; they are installed by setup/extras.ps1 (bundled with the app), started
+elevated only when the user clicks "Install" in the wizard or in Settings. macOS and Linux have none to install
+(Linux: the mount needs fuse3, which the package depends on).
 """
 import asyncio
 import logging
 import os
 import subprocess
 import time
-import winreg
 from pathlib import Path
 
-from .config import APP_DIR, BASE_DIR, settings
+from .config import APP_DIR, BASE_DIR, IS_WIN, NO_WINDOW, settings
 
 log = logging.getLogger("setup")
 VCAM_CLSID = "{4A97DD59-7288-40DC-A638-997758C35BD1}"
@@ -20,6 +20,7 @@ _cache: dict = {"t": 0.0, "v": {}}
 
 
 def _key_exists(root, path: str) -> bool:
+    import winreg
     try:
         winreg.CloseKey(winreg.OpenKey(root, path))
         return True
@@ -32,7 +33,7 @@ def _vdd_installed() -> bool:
         out = subprocess.run(["powershell", "-NoProfile", "-Command",
                               "(Get-PnpDevice -FriendlyName 'Virtual Display Driver' -ErrorAction SilentlyContinue | "
                               "Measure-Object).Count"], capture_output=True, text=True, timeout=15,
-                             creationflags=subprocess.CREATE_NO_WINDOW).stdout.strip()
+                             creationflags=NO_WINDOW).stdout.strip()
         return out not in ("", "0")
     except Exception:
         return False
@@ -40,8 +41,11 @@ def _vdd_installed() -> bool:
 
 def extras() -> dict:
     """Which optional system components are installed (cached for a minute; querying PnP is slow)."""
+    if not IS_WIN:
+        return {}
     if time.time() - _cache["t"] < 60 and _cache["v"]:
         return _cache["v"]
+    import winreg
     from .drive import winfsp_installed
     v = {
         "winfsp": winfsp_installed(),
@@ -63,6 +67,8 @@ def _script() -> Path | None:
 
 def install_extras(items: list[str]) -> dict:
     """Runs setup/extras.ps1 elevated (Windows asks for permission) for the chosen items."""
+    if not IS_WIN:
+        return {"ok": False, "error": "nothing to install on this system"}
     script = _script()
     if not script:
         return {"ok": False, "error": "setup/extras.ps1 not found next to the app"}
@@ -73,7 +79,7 @@ def install_extras(items: list[str]) -> dict:
     cmd = (f"Start-Process powershell -Verb RunAs -WindowStyle Normal -ArgumentList "
            f"'-NoProfile -ExecutionPolicy Bypass -File \"{script}\" {args}'")
     try:
-        subprocess.Popen(["powershell", "-NoProfile", "-Command", cmd], creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.Popen(["powershell", "-NoProfile", "-Command", cmd], creationflags=NO_WINDOW)
     except OSError as e:
         return {"ok": False, "error": str(e)}
     _cache["t"] = 0.0

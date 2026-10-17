@@ -56,6 +56,10 @@ def get_clipboard() -> str:
         user32.CloseClipboard()
 
 
+def clipboard_seq() -> int:
+    return user32.GetClipboardSequenceNumber()
+
+
 MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_NOREPEAT = 0x1, 0x2, 0x4, 0x4000
 WM_HOTKEY = 0x0312
 

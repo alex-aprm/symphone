@@ -17,7 +17,7 @@ import secrets
 import socket
 import time
 
-from .config import settings
+from .config import IS_WIN, settings
 
 log = logging.getLogger("nearby")
 SVC = "5e7c0001-9b0d-4c55-9e6a-50a0c3e7d6a1"
@@ -48,7 +48,8 @@ class Nearby:
 
     def status(self):
         now = time.time()
-        return {"ble": self.ble_state, "bleError": self.ble_error, "wfd": self.wfd_state, "wfdError": self.wfd_error,
+        return {"ble": self.ble_state, "bleError": self.ble_error,
+                "wfd": self.wfd_state if IS_WIN else "unavailable", "wfdError": self.wfd_error,
                 "near": [k for k, t in self.near.items() if now - t < 30]}
 
     # ------------------------------------------------------------------ main loop
@@ -141,11 +142,12 @@ class Nearby:
         if not c:
             c = {"ssid": f"DIRECT-PS-{settings['pc_id'][:4].upper()}", "pass": secrets.token_urlsafe(12)}
             settings["wfd_network"] = c
-        self.core.hub.wfd_creds = dict(c, prefer=bool(settings["wfd_prefer"])) if settings["wifi_direct"] else None
+        # Hosting the network is a Windows feature (WiFiDirectAdvertisementPublisher): elsewhere phones never get it
+        self.core.hub.wfd_creds = dict(c, prefer=bool(settings["wfd_prefer"])) if settings["wifi_direct"] and IS_WIN else None
         return c
 
     def _want_wfd(self) -> bool:
-        if not settings["wifi_direct"]:
+        if not settings["wifi_direct"] or not IS_WIN:
             return False
         hub = self.core.hub
         if hub.pair_secret:

@@ -5,11 +5,10 @@ import os
 import re
 import subprocess
 
-from .config import ADB, USB_FWD_PORT, PHONE_PORT, TOOLS_DIR, APP_DIR, settings
+from .config import ADB, USB_FWD_PORT, PHONE_PORT, TOOLS_DIR, APP_DIR, NO_WINDOW, settings
 
 log = logging.getLogger("adb")
 PKG = "dev.phonesync"
-NO_WINDOW = subprocess.CREATE_NO_WINDOW
 APK_VERSION = 11                  # versionCode of the phone app bundled with this PC app
 APK = next((p for p in (TOOLS_DIR / "Symphone.apk", APP_DIR / "dist" / "Symphone.apk") if p.exists()), None)
 ALLOW_EMULATOR = os.environ.get("PHONESYNC_EMULATOR") == "1"     # treat emulators like USB phones (testing)
@@ -19,8 +18,11 @@ ADB_ONLY = {x for x in os.environ.get("SYMPHONE_ADB_ONLY", "").split(",") if x}
 
 async def run(*args, serial=None, timeout=15, check=False) -> tuple[int, str]:
     cmd = [str(ADB)] + (["-s", serial] if serial else []) + [str(a) for a in args]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, creationflags=NO_WINDOW)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, creationflags=NO_WINDOW)
+    except FileNotFoundError:
+        return -1, f"adb not found ({ADB})"
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:

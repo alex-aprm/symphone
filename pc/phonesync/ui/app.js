@@ -30,11 +30,22 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3200);
 }
 
-/* ---------------------------------------------------------------- theme (follows Windows) */
+/* ---------------------------------------------------------------- theme (follows the system) */
+let OS = "windows";
+// macOS / Linux: Windows-only features hide (.win-only, .no-mac), wording comes from data-mac / data-linux
+function applyOs(os) {
+  if (os === OS) return;
+  OS = os;
+  const r = document.documentElement;
+  r.dataset.os = os;
+  $$(`[data-${os}]`).forEach(e => e.innerHTML = e.dataset[os]);
+  if (os !== "windows" && STEPS.includes("extras")) STEPS.splice(STEPS.indexOf("extras"), 1);
+}
 async function applyTheme() {
   try {
     const t = await (await fetch("/api/theme")).json();
     const r = document.documentElement;
+    applyOs(t.platform || "windows");
     r.dataset.theme = t.dark ? "dark" : "light";
     r.classList.toggle("mica", !!t.mica);          // the window's Mica material shows through (Transparency effects on)
     for (const [k, v] of Object.entries({ "--accent": t.accent, "--a-light1": t.light1, "--a-light2": t.light2, "--a-light3": t.light3,
@@ -125,7 +136,8 @@ function renderState(s) {
   $("#vcamInfo").textContent = !vc.installed ? "Not installed (run vcam\\install.ps1 once as admin)"
     : vc.active ? `In use · ${vc.size[0]}×${vc.size[1]} · ${vc.fps} fps` : `“${(d && d.name) || "Phone"} Camera” for Teams, Zoom, Camera… — starts the phone camera only while in use`;
   renderVcam(vc);
-  $("#driveStatus").textContent = s.drive?.mounted ? (s.drive.mode === "letter" ? `Mounted as ${s.drive.letter}` : "Shown under This PC")
+  $("#driveStatus").textContent = s.drive?.mounted ? (s.drive.mode === "letter" ? `Mounted as ${s.drive.letter}`
+      : { windows: "Shown under This PC", mac: "Shown in Finder's sidebar", linux: "Shown in the sidebar of Files" }[OS])
     : (s.drive?.error || (s.connected ? "Mounting…" : "Mounts when the phone is connected"));
   const nb = s.nearby || {};
   $("#bleDetail").textContent = nb.ble === "scanning" ? "On — reconnects as soon as your phone is nearby" + (nb.near?.length ? " · phone nearby" : "")

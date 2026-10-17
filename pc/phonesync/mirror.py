@@ -1,19 +1,22 @@
 """scrcpy sessions: screen projection with touch, apps in their own windows, camera, and phone audio capture."""
 import asyncio
-import ctypes
 import logging
 import shutil
 import subprocess
-from ctypes import wintypes
 
 from .adb import env_for_scrcpy
-from .config import SCRCPY, SCRCPY_DIR, LOG_DIR, settings
+from .config import SCRCPY, SCRCPY_DIR, LOG_DIR, IS_WIN, IS_LINUX, NO_WINDOW, settings
 
 log = logging.getLogger("mirror")
-user32 = ctypes.windll.user32
 
 
 def focus_window(title_prefix: str) -> bool:
+    """Brings a scrcpy SDL window to the front (Windows; elsewhere the legacy windows are just reopened)."""
+    if not IS_WIN:
+        return False
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
     found = []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -43,7 +46,7 @@ class Mirror:
     def running(self) -> dict:
         return {k: True for k, p in self.procs.items() if p.poll() is None}
 
-    def _spawn(self, key: str, args: list[str], exe=None) -> bool:
+    def _spawn(self, key: str, args: list[str], exe=None, env: dict | None = None) -> bool:
         p = self.procs.get(key)
         if p and p.poll() is None:
             return False
@@ -53,8 +56,9 @@ class Mirror:
         cmd = [str(exe or SCRCPY), "-s", serial] + args
         log.info("scrcpy %s", " ".join(args))
         logf = open(LOG_DIR / f"scrcpy-{key.replace(':', '_')}.log", "w", encoding="utf-8", errors="replace")
-        self.procs[key] = subprocess.Popen(cmd, cwd=str(SCRCPY_DIR), env=env_for_scrcpy(), stdout=logf, stderr=logf,
-                                           creationflags=subprocess.CREATE_NO_WINDOW)
+        self.procs[key] = subprocess.Popen(cmd, cwd=str(SCRCPY_DIR) if SCRCPY_DIR.is_dir() else None,
+                                           env={**env_for_scrcpy(), **(env or {})}, stdout=logf, stderr=logf,
+                                           creationflags=NO_WINDOW)
         return True
 
     def stop(self, key: str):
@@ -144,7 +148,9 @@ class Mirror:
     def audio(self, source: str, to_virtual_mic=False):
         """Phone audio -> PC. source: output | playback | mic-voice-communication | voice-call ..."""
         key = f"audio:{source}"
-        if not self.core.adbm.serial:
+        # Debug-free, or the virtual microphone on macOS (scrcpy can't pick an output device there): the phone app's
+        # own capture, played by pcaudio
+        if not self.core.adbm.serial or (to_virtual_mic and not IS_WIN and not IS_LINUX):
             # Debug-free: the phone app streams its own capture (playback capture asks for casting consent once)
             if source == "voice-call":
                 raise ConnectionError("call audio on the PC needs wireless debugging")
@@ -153,16 +159,20 @@ class Mirror:
                 return False
             self.procs[key] = CastAudio(self.core, "mic" if source.startswith("mic") else "playback", to_virtual_mic)
             return True
-        exe = None
-        if to_virtual_mic:
+        exe, env = None, None
+        if to_virtual_mic and IS_WIN:
             exe = SCRCPY_DIR / "scrcpy-mic.exe"      # separate exe so Windows can route it to CABLE Input
             if not exe.exists():
                 shutil.copy2(SCRCPY, exe)
             route_app_to_cable(exe.name)
+        elif to_virtual_mic:
+            from .pcaudio import ensure_virtual_mic, VMIC_SINK
+            ensure_virtual_mic()                    # Linux: scrcpy (SDL) plays into the null sink behind it
+            env = {"PULSE_SINK": VMIC_SINK, "SDL_AUDIODRIVER": "pulseaudio"}
         args = ["--no-video", "--no-control", "--no-window", f"--audio-source={source}", "--audio-buffer=40"]
         if source == "playback":
             args.append("--audio-dup")
-        return self._spawn(key, args, exe=exe)
+        return self._spawn(key, args, exe=exe, env=env)
 
     def _title(self, what):
         name = settings.phone_name()
@@ -220,26 +230,20 @@ class CastAudio:
                 pass
 
     def _play(self):
-        import pyaudiowpatch as pa
-        p = pa.PyAudio()
+        from .pcaudio import open_playback
+        out = None
         try:
-            idx = None
-            if self.to_cable:
-                idx = next((i for i in range(p.get_device_count())
-                            if "CABLE Input" in p.get_device_info_by_index(i)["name"]
-                            and p.get_device_info_by_index(i)["maxOutputChannels"] > 0), None)
-            out = p.open(format=pa.paInt16, channels=2, rate=48000, output=True, output_device_index=idx,
-                         frames_per_buffer=960)
+            out = open_playback(48000, 2, virtual_mic=self.to_cable)
             while not self._done:
                 pcm = self._q.get()
                 if pcm is None:
                     break
                 out.write(pcm)
-            out.close()
         except Exception as e:
             log.info("cast audio playback: %s", e)
         finally:
-            p.terminate()
+            if out is not None:
+                out.close()
 
 
 def route_app_to_cable(exe_name: str) -> bool:
@@ -250,5 +254,5 @@ def route_app_to_cable(exe_name: str) -> bool:
         log.warning("svcl not found; route %s to 'CABLE Input' manually in Settings > Sound > Volume mixer", exe_name)
         return False
     subprocess.run([str(svcl), "/SetAppDefault", "CABLE Input", "all", exe_name],
-                   creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
+                   creationflags=NO_WINDOW, timeout=10)
     return True

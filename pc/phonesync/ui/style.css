@@ -1,9 +1,11 @@
-/* Symphone — Windows 11 Settings look. Colors follow the Windows app mode and accent (set from /api/theme). */
+/* Symphone — Windows 11 Settings look. Colors follow the system app mode and accent (set from /api/theme). */
+@font-face { font-family: "Symphone Icons"; src: url("icons.woff2") format("woff2"); }   /* macOS / Linux (no Segoe) */
+:root[data-os="mac"] .win-only, :root[data-os="linux"] .win-only, :root[data-os="mac"] .no-mac { display: none !important; }
 :root {
   --accent: #0078d4; --a-light1: #0091f8; --a-light2: #4cc2ff; --a-light3: #99ebff; --a-dark1: #0067c0; --a-dark2: #003e92;
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-d: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+  --icons: "Segoe Fluent Icons", "Segoe MDL2 Assets", "Symphone Icons";
   --r: 8px; --r-sm: 4px;
 }
 :root, :root[data-theme="dark"] {

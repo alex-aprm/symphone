@@ -34,7 +34,7 @@
       <button data-tab="files"><span class="ic">&#xE8B7;</span><span>Files</span></button>
       <button data-tab="apps"><span class="ic">&#xE71D;</span><span>Apps</span></button>
       <button data-tab="settings"><span class="ic">&#xE713;</span><span>Settings</span></button>
-      <button data-tab="display"><span class="ic">&#xE7F4;</span><span>Side display</span><i id="displayLive" class="live-dot" hidden></i></button>
+      <button data-tab="display" class="win-only"><span class="ic">&#xE7F4;</span><span>Side display</span><i id="displayLive" class="live-dot" hidden></i></button>
     </nav>
   </aside>
 
@@ -61,7 +61,7 @@
           <div class="quick-actions">
             <button class="qa" data-act="phone"><span class="ic">&#xE8EA;</span><span>Phone screen</span></button>
             <button class="qa" data-act="camera"><span class="ic">&#xE722;</span><span>Camera</span></button>
-            <button class="qa" data-act="drive"><span class="ic">&#xEC50;</span><span>Explorer</span></button>
+            <button class="qa" data-act="drive"><span class="ic">&#xEC50;</span><span data-mac="Finder" data-linux="Files">Explorer</span></button>
             <button class="qa" data-act="send"><span class="ic">&#xE898;</span><span>Send files</span></button>
           </div>
           <h3 class="sec">Quick settings</h3>
@@ -109,7 +109,7 @@
           <button class="icon-btn" id="fsUp" title="Up"><span class="ic">&#xE74A;</span></button>
           <div id="crumbs" class="crumbs"></div>
           <div class="grow"></div>
-          <button class="btn" data-act="drive"><span class="ic">&#xEC50;</span> Open in Explorer</button>
+          <button class="btn" data-act="drive"><span class="ic">&#xEC50;</span> <span data-mac="Open in Finder" data-linux="Open in Files">Open in Explorer</span></button>
           <button class="btn" id="fsUpload"><span class="ic">&#xE898;</span> Upload</button>
           <button class="btn accent" id="fsDownload" disabled><span class="ic">&#xE896;</span> <span>Download</span></button>
         </div>
@@ -161,10 +161,10 @@
           <div class="row"><span class="ic row-ic">&#xE702;</span>
             <span class="row-text"><b>Find phones with Bluetooth</b><small id="bleDetail">Reconnects as soon as your phone is nearby, even before it joins Wi‑Fi</small></span>
             <label class="switch"><input type="checkbox" data-set="ble"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xE839;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xE839;</span>
             <span class="row-text"><b>Wi‑Fi Direct</b><small id="wfdDetail">This PC hosts a private Wi‑Fi Direct link: used when the phone is nearby but on another network (or none)</small></span>
             <label class="switch"><input type="checkbox" data-set="wifi_direct"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xE701;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xE701;</span>
             <span class="row-text"><b>Prefer Wi‑Fi Direct</b><small>A direct phone‑to‑PC link instead of going through the router, for phones that can stay on their own Wi‑Fi at the same time (the phone asks once to allow it)</small></span>
             <label class="switch"><input type="checkbox" data-set="wfd_prefer"><span></span></label></div>
         </div>
@@ -175,7 +175,7 @@
             <span class="row-text"><b>Shared clipboard</b><small>Copy on one device, paste on the other</small></span>
             <label class="switch"><input type="checkbox" data-set="clipboard_sync"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xEA8F;</span>
-            <span class="row-text"><b>Show phone notifications on Windows</b><small>Click to open in a window, reply and use actions right in the notification</small></span>
+            <span class="row-text"><b data-mac="Show phone notifications on this Mac" data-linux="Show phone notifications on this computer">Show phone notifications on Windows</b><small>Click to open in a window, reply and use actions right in the notification</small></span>
             <label class="switch"><input type="checkbox" data-set="toasts"><span></span></label></div>
           <details class="row-exp">
             <summary class="row"><span class="ic row-ic">&#xE7BA;</span>
@@ -191,9 +191,9 @@
         <h3 class="sec">Files &amp; photos</h3>
         <div class="group">
           <div class="row"><span class="ic row-ic">&#xEC50;</span>
-            <span class="row-text"><b>Show the phone in File Explorer</b><small id="driveStatus"></small></span>
+            <span class="row-text"><b data-mac="Show the phone in Finder" data-linux="Show the phone in Files">Show the phone in File Explorer</b><small id="driveStatus"></small></span>
             <label class="switch"><input type="checkbox" data-set="drive_enabled"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xEDA2;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xEDA2;</span>
             <span class="row-text"><b>Appears as</b><small>A device under This PC, or a drive letter</small></span>
             <select data-set="drive_mode"><option value="device">Device</option><option value="letter">Drive letter</option></select>
             <select id="driveLetter" title="Drive letter"></select></div>
@@ -209,7 +209,7 @@
         <h3 class="sec">Phone screen &amp; apps</h3>
         <div class="group">
           <div class="row"><span class="ic row-ic">&#xE72E;</span>
-            <span class="row-text"><b>Phone PIN</b><small id="pinDetail">Stored encrypted with your Windows account and typed into the phone only to unlock it</small></span>
+            <span class="row-text"><b>Phone PIN</b><small id="pinDetail" data-mac="Stored encrypted for your user account and typed into the phone only to unlock it" data-linux="Stored encrypted for your user account and typed into the phone only to unlock it">Stored encrypted with your Windows account and typed into the phone only to unlock it</small></span>
             <input id="pin" class="text" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off">
             <button class="btn" id="savePin">Save</button><button class="btn" id="clearPin">Remove</button></div>
           <div class="row"><span class="ic row-ic">&#xE785;</span>
@@ -230,16 +230,16 @@
 
         <h3 class="sec">Camera</h3>
         <div class="group">
-          <div class="row"><span class="ic row-ic">&#xE714;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xE714;</span>
             <span class="row-text"><b>Windows camera</b><small id="vcamInfo"></small></span>
             <select id="vcamCamera" title="Which phone camera"></select></div>
-          <div class="row"><span class="ic row-ic">&#xE7AD;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xE7AD;</span>
             <span class="row-text"><b>Rotate</b><small>Turns the picture clockwise</small></span>
             <div class="seg" id="vcamRotate"><button data-r="0">0°</button><button data-r="90">90°</button><button data-r="180">180°</button><button data-r="270">270°</button></div></div>
-          <div class="row"><span class="ic row-ic">&#xE8B4;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xE8B4;</span>
             <span class="row-text"><b>Follow the phone's rotation</b><small>The picture stays upright whichever way the phone stands</small></span>
             <label class="switch"><input type="checkbox" id="vcamAuto"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xE8AB;</span>
+          <div class="row win-only"><span class="ic row-ic">&#xE8AB;</span>
             <span class="row-text"><b>Mirror</b><small>Flip left and right, like looking in a mirror</small></span>
             <label class="switch"><input type="checkbox" id="vcamMirror"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE722;</span>
@@ -249,15 +249,15 @@
 
         <h3 class="sec">Audio &amp; calls</h3>
         <div class="group">
-          <div class="row"><span class="ic row-ic">&#xE7F5;</span><span class="row-text"><b>PC sound → phone speaker</b></span>
+          <div class="row"><span class="ic row-ic">&#xE7F5;</span><span class="row-text"><b>PC sound → phone speaker</b><small class="no-win" data-mac="Needs BlackHole (a free loopback audio device)" data-linux=""></small></span>
             <label class="switch"><input type="checkbox" data-audio="system"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE720;</span><span class="row-text"><b>PC microphone → phone speaker</b></span>
             <label class="switch"><input type="checkbox" data-audio="mic"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xE702;</span><span class="row-text"><b>Phone sound → PC speakers</b><small>Bluetooth audio</small></span>
+          <div class="row win-only"><span class="ic row-ic">&#xE702;</span><span class="row-text"><b>Phone sound → PC speakers</b><small>Bluetooth audio</small></span>
             <label class="switch"><input type="checkbox" data-audio="bt_sink"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE767;</span><span class="row-text"><b>Phone sound → PC speakers</b><small>Over USB / Wi‑Fi</small></span>
             <label class="switch"><input type="checkbox" data-audio="output"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xE720;</span><span class="row-text"><b>Phone microphone → PC microphone</b><small>Pick “CABLE Output” as the microphone in your app</small></span>
+          <div class="row"><span class="ic row-ic">&#xE720;</span><span class="row-text"><b>Phone microphone → PC microphone</b><small data-mac="Needs BlackHole; pick “BlackHole” as the microphone in your app" data-linux="Pick “Symphone microphone” as the microphone in your app">Pick “CABLE Output” as the microphone in your app</small></span>
             <label class="switch"><input type="checkbox" data-audio="mic-voice-communication" data-vmic="1"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE717;</span><span class="row-text"><b>Call audio → PC</b><small>Incoming calls (phone, Telegram, WhatsApp…) ring on the PC with Answer/Decline; this plays the call through the PC</small></span>
             <label class="switch"><input type="checkbox" data-audio="voice-call"><span></span></label></div>
@@ -268,16 +268,16 @@
         <div class="group">
           <button class="row clickable" id="setupAgain"><span class="ic row-ic">&#xE7B8;</span>
             <span class="row-text"><b>Setup assistant</b><small>Install the phone app, pair, permissions, wireless debugging and extras — step by step</small></span><span class="ic chev">&#xE76C;</span></button>
-          <div class="row"><span class="ic row-ic">&#xE7E8;</span><span class="row-text"><b>Start with Windows</b></span>
+          <div class="row"><span class="ic row-ic">&#xE7E8;</span><span class="row-text"><b data-mac="Open at login" data-linux="Start at login">Start with Windows</b></span>
             <label class="switch"><input type="checkbox" data-set="autostart"><span></span></label></div>
-          <div class="row"><span class="ic row-ic">&#xE765;</span><span class="row-text"><b>Shortcuts</b>
-            <small>Ctrl+Alt+P phone screen · Ctrl+Alt+U unlock · Ctrl+Alt+L lock · Explorer: right‑click → Send to → your phone</small></span></div>
+          <div class="row no-mac"><span class="ic row-ic">&#xE765;</span><span class="row-text"><b>Shortcuts</b>
+            <small data-linux="Ctrl+Alt+P phone screen · Ctrl+Alt+U unlock · Ctrl+Alt+L lock (X11) · Files: right‑click → Scripts → Send to your phone">Ctrl+Alt+P phone screen · Ctrl+Alt+U unlock · Ctrl+Alt+L lock · Explorer: right‑click → Send to → your phone</small></span></div>
         </div>
       </div>
     </section>
 
     <!-- ============================================================ SIDE DISPLAY -->
-    <section id="tab-display" class="tab">
+    <section id="tab-display" class="tab win-only">
       <h1>Side display</h1>
       <div class="settings">
         <div class="display-hero card">
@@ -326,7 +326,7 @@
       <li data-s="pair">Connect your phone</li>
       <li data-s="phone">Permissions on the phone</li>
       <li data-s="wireless">App windows (optional)</li>
-      <li data-s="extras">Extras for this PC</li>
+      <li data-s="extras" class="win-only">Extras for this PC</li>
       <li data-s="done">Done</li>
     </ol>
     <button class="link setup-skip" id="setupLater">Set up later</button>
@@ -403,7 +403,7 @@
       <ul class="tips">
         <li><b>Apps</b> — open any phone app in its own window, even with the phone locked</li>
         <li><b>Status</b> — notifications you can reply to, quick settings, calls</li>
-        <li>Right-click a file in Explorer → <b>Send to</b> → your phone</li>
+        <li class="no-mac" data-linux="Right-click a file in Files → <b>Scripts</b> → Send to your phone">Right-click a file in Explorer → <b>Send to</b> → your phone</li>
         <li>Copy on one device, paste on the other</li>
       </ul>
     </div>

@@ -7,11 +7,11 @@ import sys
 import threading
 import urllib.request
 
-from .config import UI_PORT, LOG_DIR, UI_DIR, settings
+from .config import UI_PORT, LOG_DIR, settings
 
 
 def _post_running(path, body=None) -> bool:
-    """Talks to an already-running instance (single instance + Explorer 'Send to')."""
+    """Talks to an already-running instance (single instance + the file manager's 'Send to')."""
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{UI_PORT}{path}", data=json.dumps(body or {}).encode(),
                                      headers={"Content-Type": "application/json", "X-PhoneSync": "1"}, method="POST")
@@ -37,9 +37,9 @@ def _send_paths(args):
 def main():
     args = sys.argv[1:]
     dev = args[args.index("--dev") + 1] if "--dev" in args and args.index("--dev") + 1 < len(args) else None
-    if "--cleanup" in args:                 # uninstaller: remove what the app added to Windows
-        from . import winutil
-        winutil.cleanup()
+    if "--cleanup" in args:                 # uninstaller: remove what the app added to the system
+        from . import desktop
+        desktop.cleanup()
         return
     url = next((a for a in args if a.lower().startswith("phonesync:")), None)
     if url:
@@ -63,7 +63,7 @@ def main():
                         format="%(asctime)s %(levelname).1s %(name)s: %(message)s")
 
     from .core import Core
-    from . import server, gui, winutil
+    from . import server, gui, desktop
 
     core = Core()
     loop = asyncio.new_event_loop()
@@ -105,15 +105,12 @@ def main():
         "clipboard": call(core.push_clipboard),
         "quit": lambda: asyncio.run_coroutine_threadsafe(core.shutdown(), loop).result(10),
     }
-    winutil.start_hotkeys({
-        (winutil.MOD_CONTROL | winutil.MOD_ALT, ord("U")): actions["unlock"],
-        (winutil.MOD_CONTROL | winutil.MOD_ALT, ord("P")): actions["phone"],
-        (winutil.MOD_CONTROL | winutil.MOD_ALT, ord("L")): actions["lock"],
-    })
+    desktop.start_hotkeys(actions)
+
     def integrate():
         try:
-            winutil.install_shell_integration(UI_DIR / "icon.ico", core.hub)
-            winutil.set_autostart(bool(settings["autostart"]))
+            desktop.install_shell_integration(core.hub)
+            desktop.set_autostart(bool(settings["autostart"]))
         except Exception as e:
             logging.warning("shell integration: %s", e)
     threading.Thread(target=integrate, daemon=True).start()

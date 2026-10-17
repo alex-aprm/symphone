@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import ctypes
 import struct
+import sys
 import time
-from ctypes import wintypes
 
 __all__ = ["VirtualCamera", "MAPPING_NAME", "EVENT_NAME"]
 
@@ -46,19 +46,22 @@ _SYNCHRONIZE = 0x00100000
 _HEARTBEAT_TIMEOUT_S = 3.0
 _RETRY_INTERVAL_S = 1.0
 
-_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-_k32.OpenFileMappingW.restype = wintypes.HANDLE
-_k32.OpenFileMappingW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
-_k32.MapViewOfFile.restype = ctypes.c_void_p
-_k32.MapViewOfFile.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_size_t]
-_k32.UnmapViewOfFile.restype = wintypes.BOOL
-_k32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
-_k32.OpenEventW.restype = wintypes.HANDLE
-_k32.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
-_k32.SetEvent.restype = wintypes.BOOL
-_k32.SetEvent.argtypes = [wintypes.HANDLE]
-_k32.CloseHandle.restype = wintypes.BOOL
-_k32.CloseHandle.argtypes = [wintypes.HANDLE]
+_k32 = None                 # the camera is a Windows (Media Foundation) component: never available elsewhere
+if sys.platform == "win32":
+    from ctypes import wintypes
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _k32.OpenFileMappingW.restype = wintypes.HANDLE
+    _k32.OpenFileMappingW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    _k32.MapViewOfFile.restype = ctypes.c_void_p
+    _k32.MapViewOfFile.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_size_t]
+    _k32.UnmapViewOfFile.restype = wintypes.BOOL
+    _k32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
+    _k32.OpenEventW.restype = wintypes.HANDLE
+    _k32.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    _k32.SetEvent.restype = wintypes.BOOL
+    _k32.SetEvent.argtypes = [wintypes.HANDLE]
+    _k32.CloseHandle.restype = wintypes.BOOL
+    _k32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 
 def _filetime_now() -> int:
@@ -86,6 +89,8 @@ class VirtualCamera:
     def _open(self) -> bool:
         if self._base:
             return True
+        if _k32 is None:
+            return False
         now = time.monotonic()
         if now - self._last_try < _RETRY_INTERVAL_S and self._last_try:
             return False

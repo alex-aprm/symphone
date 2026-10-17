@@ -6,7 +6,7 @@
 [![Android app](https://github.com/alex-aprm/symphone/actions/workflows/android.yml/badge.svg)](https://github.com/alex-aprm/symphone/actions/workflows/android.yml)
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-alexaprm-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alexaprm)
 
-**Your Android phone, right on your Windows PC.** Open phone apps in windows and type in them with your
+**Your Android phone, right on your PC — Windows, macOS or Linux.** Open phone apps in windows and type in them with your
 keyboard, answer notifications, browse photos and files, share the clipboard, take calls, use the phone as a webcam
 or as a second screen — over USB, Wi‑Fi or both, even while the phone stays locked in your pocket.
 
@@ -90,9 +90,27 @@ and firewall rules — `Symphone\setup\admin-setup.ps1`; the side display driver
 
 The Windows app keeps the phone app up to date.
 
+### macOS and Linux
+
+The same app runs on **macOS** (Apple silicon) and **Linux** (Ubuntu 22.04+ / Debian 12+, x86‑64): phone apps in
+windows, notifications with replies, photos and files (the phone is mounted in Finder / Files), shared clipboard,
+sharing, unlock and audio. The side display, the phone webcam, Wi‑Fi Direct and the phone as a Bluetooth speaker
+are Windows-only.
+
+- **Ubuntu / Debian:** download **symphone_…_amd64.deb** and install it (`sudo apt install ./symphone_*_amd64.deb`),
+  or extract **Symphone-…-linux-x64.tar.gz** and run `Symphone/Symphone` (needs `fuse3` and `pulseaudio-utils`).
+  Files has the phone in its sidebar and *Scripts › Send to <phone>* in the right-click menu; `Ctrl+Alt+P/U/L` work
+  on X11.
+- **macOS:** open **Symphone-…-macos-arm64.dmg** and drag Symphone to Applications. The app isn't notarized: the first
+  time, right-click it → *Open* (or run `xattr -dr com.apple.quarantine /Applications/Symphone.app`). Capturing the
+  Mac's own sound and the phone as a microphone need [BlackHole](https://existential.audio/blackhole/).
+
+Then connect the phone over USB once (as in step 2 above) or pair it with a QR code from the setup assistant.
+
 ## Under the hood
 
-Two parts: a Windows app (`pc/`, Python + WebView2) and an Android app (`android/`, Kotlin). The phone runs a
+Two parts: a desktop app (`pc/`, Python; WebView2 on Windows, WebKit on macOS, Qt WebEngine on Linux) and an
+Android app (`android/`, Kotlin). The phone runs a
 small, fast server; the PC finds it over the same Wi‑Fi (UDP beacon + mDNS), Wi‑Fi Direct or USB
 (`adb forward`), and uses **all links at once** for bulk transfers.
 
@@ -102,13 +120,22 @@ The first time the phone is connected over USB with debugging enabled, the PC gr
 
 Every push builds the Android app ([android.yml](.github/workflows/android.yml)); pushing a `v*` tag builds
 everything and publishes a release ([release.yml](.github/workflows/release.yml)): the patched scrcpy server, the
-native helpers (MSVC), the Windows app (PyInstaller) and the APK. Locally:
+native helpers (MSVC), the Windows, macOS and Linux apps (PyInstaller) and the APK. Locally on Windows:
 
 ```powershell
 cd android; .\gradlew assembleRelease; copy app\build\outputs\apk\release\app-release.apk ..\dist\Symphone.apk; cd ..
 cmd /c sidecar\native\build.cmd                                     # vddctl + sidecar_host (VS 2022 C++)
 # tools\: scrcpy-win64-v5.0.1 (its scrcpy-server replaced by the patched build), rclone-*-windows-amd64, svcl
 cd pc; py -3.14 -m venv .venv; .venv\Scripts\pip install -r requirements.txt; .\build.ps1    # -> pc\dist\Symphone
+```
+
+On macOS / Linux (the APK in `dist/` as above):
+
+```sh
+# tools/: scrcpy-macos-aarch64-v5.0.1 or scrcpy-linux-x86_64-v5.0.1 (patched scrcpy-server), rclone-*/rclone
+cd pc && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+sh build.sh 1.2.3       # -> pc/dist/Symphone.app or pc/dist/Symphone; with a version also the .dmg / .tar.gz + .deb in dist/
+python3 -m phonesync    # or run from source (adb, scrcpy and rclone from tools/ or PATH)
 ```
 
 
@@ -149,10 +176,11 @@ cd pc; py -3.14 -m venv .venv; .venv\Scripts\pip install -r requirements.txt; .\
 ```
 android/            Kotlin app (no dependencies): NIO HTTP/WebDAV server with sendfile, MediaStore, notification listener, share target, audio sink, camera capture, torch
 pc/phonesync/       Python 3.14 app: core.py (wiring), phone.py (links/discovery/events), transfer.py (multipath), davproxy.py + drive.py (Explorer),
-                    media.py, notify.py (toasts), mirror.py (scrcpy), audio.py, controls.py (quick settings), server.py + ui/ (WebView2 UI), gui.py (window/tray)
+                    media.py, notify.py (toasts), mirror.py (scrcpy), audio.py + pcaudio.py, controls.py (quick settings), server.py + ui/ (web UI), gui.py (window/tray),
+                    desktop.py (per-OS: clipboard, autostart, file manager, theme; winutil.py on Windows)
 scrcpy/             symphone-server.patch: our changes to the scrcpy 5.0.1 server (applied and built by CI)
 tools/              (not in git) adb + scrcpy 5.0.1 with the patched server, rclone, NirSoft svcl
-setup/              admin-setup.ps1, install.ps1
+setup/              admin-setup.ps1, install.ps1, symphone.iss (Windows installer); linux/ (.deb packaging)
 ```
 
 ### Why scrcpy is patched

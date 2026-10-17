@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Symphone
+Comment=Your phone on this computer
+Exec=/opt/symphone/Symphone
+Icon=symphone
+Terminal=false
+Categories=Utility;
+StartupWMClass=Symphone
