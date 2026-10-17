@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.5.1**
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.1** (Windows app; phone app 2.7.0, versionCode 11).
 (Windows app + phone app versionCode 9).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
@@ -52,9 +52,18 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Icon: phone with a G (treble) clef | ✅ | `pc/tools/make_icon.py` → Windows `.ico`/`.png`, Android adaptive icon (incl. themed). Clef from Noto Music (OFL). |
 | Always-on-top pin for app and phone windows | ✅ | Pin button in the window's toolbar; remembered per window (each app, the phone screen, the camera), so it reopens pinned. |
 
+## Setup and debugging-free mode (2.6–2.7)
+
+| Request | Status | Notes |
+|---|---|---|
+| Smooth installation: installer, permissions with explanations, checklist, QR pairing | ✅ | `Symphone-Setup.exe` (per user, no admin); PC setup wizard (get the app by QR / USB → pair by QR → the phone's checklist live → optional wireless debugging by QR → optional admin extras → done); phone onboarding asks what it can and opens the exact Settings screen otherwise, incl. Android 13+ "Allow restricted settings" for sideloaded apps. |
+| Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
+| Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
+| QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
 ## Next cycles
 
-1. **Hands-on verification on the phone** (needs you holding it): QR scan pairing, BLE pairing, Wi‑Fi Direct join,
+1. **Hands-on verification on the phone** (needs you holding it): QR scan pairing with the real camera, BLE pairing, Wi‑Fi Direct join, the accessibility unlock on the nubia lock screen,
    direct-share targets in the share sheet, *Continue on the phone* for protected apps, side display at 300 %+,
    Explorer navigation pane placement.
 2. **Wi‑Fi Direct for phones without local-only concurrency**: have the phone host a Wi‑Fi P2P group and the PC join
