@@ -6,32 +6,99 @@
 [![Android app](https://github.com/alex-aprm/symphone/actions/workflows/android.yml/badge.svg)](https://github.com/alex-aprm/symphone/actions/workflows/android.yml)
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-alexaprm-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alexaprm)
 
-Windows 11 ⇄ Android companion. It has two parts: a Windows app (`pc/`) and an Android app (`android/`). The phone runs a small, fast server. The PC finds it over the same Wi‑Fi (UDP beacon + mDNS) or USB (`adb forward`) and uses **both links at once** for bulk transfers.
+**Your Android phone, right on your Windows PC.** Open phone apps in windows and type in them with your
+keyboard, answer notifications, browse photos and files, share the clipboard, take calls, use the phone as a webcam
+or as a second screen — over USB, Wi‑Fi or both, even while the phone stays locked in your pocket.
 
-| Status | Settings | Side display |
-|---|---|---|
-| ![Status](docs/screenshots/status.png) | ![Settings](docs/screenshots/settings.png) | ![Side display](docs/screenshots/display.png) |
+## What you can do
+
+### Phone apps in PC windows
+
+- Open **any phone app in its own window**, side by side with your Windows apps — it works while the phone is
+  locked and its screen stays off.
+- **Type with your PC keyboard** in any language; the phone's keyboard stays out of the way.
+  Scroll and pinch with the touchpad, right-click for Back.
+- Windows **resize like desktop apps** (the app re-lays itself out), and a **pin** keeps one on top.
+- **Pick the phone up** and use the app there: the PC window softly blurs. Put the phone down and the app is back
+  on the PC.
+- Apps that forbid screen capture (banking, government ids) say so and offer to continue on the phone.
+
+<p>
+  <img src="docs/screenshots/app-settings.png" width="260" alt="The phone's Settings app in a Symphone window">
+  &nbsp;
+  <img src="docs/screenshots/app-calculator.png" width="260" alt="Calculator in a Symphone window">
+</p>
+
+<sub>Real apps in Symphone windows (Wi‑Fi name blurred); the toolbar underneath has Back, volume, rotate,
+screenshot, zoom, pin on top and stats.</sub>
+
+### Notifications you can act on
+
+![Status page with notifications (sample notifications)](docs/screenshots/status.png)
+
+- Phone notifications show up in Windows and on the Status page — **reply inline**, use their buttons, or click to
+  open the conversation in a window, exactly where tapping it on the phone would take you.
+- Incoming calls ring on the PC; answer with the PC's speakers and mic.
+- The Status page also has the phone's quick settings: Wi‑Fi, Bluetooth, flashlight, do not disturb, volume…
+
+<sub>Screenshot with sample notifications; the phone's name is blurred.</sub>
+
+### Photos and files
+
+| Photos | Files |
+|---|---|
+| ![Photos (thumbnails blurred)](docs/screenshots/photos.png) | ![Files](docs/screenshots/files.png) |
+
+- **All your photos and videos** at a glance; new shots appear within a second and can be imported automatically.
+- The phone's storage is **in Explorer**, next to *This PC*. Copies use USB and Wi‑Fi at the same time.
+- Right-click → **Send to → your phone** in Explorer; on the phone, **Share → Send to PC**.
+
+<sub>Photo thumbnails and personal file names blurred.</sub>
+
+### And more
+
+| Settings | Side display |
+|---|---|
+| ![Settings](docs/screenshots/settings.png) | ![Side display](docs/screenshots/display.png) |
+
+- **Shared clipboard** — copy on one, paste on the other.
+- **Webcam** — the phone's camera as a Windows camera for Teams, Zoom & co., upright however the phone stands.
+- **Side display** — the phone as an extra Windows monitor with touch.
+- **Sound** — PC audio to the phone, phone audio and mic to the PC.
+- **Unlock and lock** the phone from the PC, see its battery at a glance.
+- **Several phones and PCs** — switch between them; each phone picks its main PC.
+- It reconnects by itself whenever the phone is nearby, and looks like part of Windows (light/dark, accent color,
+  translucent window).
 
 ## Install
 
-Download the latest **Symphone-…-windows-x64.zip** and **Symphone.apk** from
-[Releases](https://github.com/alex-aprm/symphone/releases/latest).
+You need **Windows 11** and an **Android 11+** phone.
 
-```powershell
-# extract the zip, then (per user, no admin):
-powershell -ExecutionPolicy Bypass -File Symphone\install.ps1      # copies to %LOCALAPPDATA%\Programs\Symphone,
-                                                                    # installs the phone app over USB, starts Symphone
-# optional, one-time, as administrator: WinFsp (phone storage in Explorer), VB-CABLE (virtual mic),
-# Quick Share for Windows, firewall rules for discovery on the LAN
-powershell -ExecutionPolicy Bypass -File Symphone\setup\admin-setup.ps1
-# optional extras (admin): side display driver and Windows virtual camera
-powershell -ExecutionPolicy Bypass -File Symphone\sidecar\driver\install.ps1
-powershell -ExecutionPolicy Bypass -File Symphone\vcam\install.ps1
-```
+1. Download **Symphone-…-windows-x64.zip** from [Releases](https://github.com/alex-aprm/symphone/releases/latest)
+   and extract it.
+2. On the phone, turn on **USB debugging** (Settings › About phone › tap *Build number* 7 times, then Developer
+   options › USB debugging) and plug it into the PC.
+3. Run `Symphone\install.ps1` (right-click → *Run with PowerShell*). It installs Symphone for your user, puts the
+   phone app on the phone and sets everything up — no tapping through permission screens.
 
-The Windows app keeps the phone app up to date by itself (it carries the matching APK).
+After that, USB is optional: the phone connects over Wi‑Fi by itself. More phones can be added from Settings ›
+*Add a phone* with a QR code.
 
-### Building
+Optional extras (one-time, as administrator): phone storage as a native drive in Explorer, a virtual microphone
+and firewall rules — `Symphone\setup\admin-setup.ps1`; the side display driver —
+`Symphone\sidecar\driver\install.ps1`; the Windows webcam — `Symphone\vcam\install.ps1`.
+
+The Windows app keeps the phone app up to date.
+
+## Under the hood
+
+Two parts: a Windows app (`pc/`, Python + WebView2) and an Android app (`android/`, Kotlin). The phone runs a
+small, fast server; the PC finds it over the same Wi‑Fi (UDP beacon + mDNS), Wi‑Fi Direct or USB
+(`adb forward`), and uses **all links at once** for bulk transfers.
+
+The first time the phone is connected over USB with debugging enabled, the PC grants every permission over adb, so you don't tap anything on the phone. That covers all-files access, notification access, "open apps from background", unrestricted battery, nubia AutoLaunch whitelist, calls and camera. It also fetches the pairing token and enables wireless debugging. After that, USB is optional. Without USB you can pair from Settings with the 6‑digit code shown in the phone app.
+
+### Building from source
 
 Every push builds the Android app ([android.yml](.github/workflows/android.yml)); pushing a `v*` tag builds
 everything and publishes a release ([release.yml](.github/workflows/release.yml)): the patched scrcpy server, the
@@ -44,9 +111,8 @@ cmd /c sidecar\native\build.cmd                                     # vddctl + s
 cd pc; py -3.14 -m venv .venv; .venv\Scripts\pip install -r requirements.txt; .\build.ps1    # -> pc\dist\Symphone
 ```
 
-The first time the phone is connected over USB with debugging enabled, the PC grants every permission over adb, so you don't tap anything on the phone. That covers all-files access, notification access, "open apps from background", unrestricted battery, nubia AutoLaunch whitelist, calls and camera. It also fetches the pairing token and enables wireless debugging. After that, USB is optional. Without USB you can pair from Settings with the 6‑digit code shown in the phone app.
 
-## Features
+### Features in detail
 
 | Feature | How |
 |---|---|
