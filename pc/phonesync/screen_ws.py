@@ -24,7 +24,8 @@ Route: GET /ws/screen?kind=screen|app|camera
                     {t:"cmd", c:"rotate"[, r]|"notifications"|"settings"|"collapse"|"reset"|"torch", on|
                                 "zoom_in"|"zoom_out"|"start_app", pkg}
                     {t:"win", w, h, iw, ih}                     resize the hosting window's content to w x h
-                    {t:"vd", w, h}                              resize a flex virtual display (pixels)
+                    {t:"vd", w, h}                              resize a flex virtual display (CSS px)
+                    {t:"pin", on}                               keep the hosting window always on top (remembered)
 """
 from __future__ import annotations
 
@@ -537,6 +538,8 @@ async def handle_input(s: sc.ScrcpySession, m: dict, wid: str | None = None):
 
     elif t == "win":
         await resize_window(wid, int(m["w"]), int(m["h"]), int(m.get("iw", 0)), int(m.get("ih", 0)))
+    elif t == "pin":
+        await pin_window(wid, bool(m.get("on")))
 
 
 _IME_KEYS = {"ENTER", "DEL", "FORWARD_DEL", "TAB", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT", "MOVE_HOME",
@@ -565,6 +568,20 @@ async def rotate(s: sc.ScrcpySession, r=None):
         s.rotation = new
     else:
         log.warning("rotate: %s", out)
+
+
+async def pin_window(wid: str | None, on: bool):
+    """Always on top for a viewer window; remembered, so the window reopens pinned."""
+    pinned = [k for k in (settings["pinned_windows"] or []) if k != wid]
+    if on and wid:
+        pinned.append(wid)
+    settings["pinned_windows"] = pinned
+    win = _windows.get(wid or "")
+    if win is not None:
+        try:
+            await asyncio.to_thread(setattr, win, "on_top", on)
+        except Exception as e:
+            log.debug("pin: %s", e)
 
 
 async def resize_window(wid: str | None, w: int, h: int, cur_iw: int = 0, cur_ih: int = 0):
@@ -638,8 +655,11 @@ async def open_window(kind: str = "screen", *, port: int = UI_PORT, **params):
 
     width, height = _fit_work_area(width, height)
 
+    pinned = key in (settings["pinned_windows"] or [])
+
     def create():
-        win = webview.create_window(title, viewer_url(kind, port, wid=key, **params), width=width, height=height,
+        win = webview.create_window(title, viewer_url(kind, port, wid=key, pinned="1" if pinned else "", **params),
+                                    on_top=pinned, width=width, height=height,
                                     min_size=(220, 300), background_color="#0b0f14", text_select=False)
         win.events.closed += lambda: _windows.pop(key, None)
         return win

@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.5.0**
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.5.1**
 (Windows app + phone app versionCode 9).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
@@ -50,6 +50,7 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Webcam: camera pick, mirror, rotate, follow the phone's rotation | ✅ | Upright output verified with the phone turned; only two cameras are exposed by this phone to apps (back, front). |
 | Buy me a coffee link | ✅ | `.github/FUNDING.yml` (Sponsor button) + README. |
 | Icon: phone with a G (treble) clef | ✅ | `pc/tools/make_icon.py` → Windows `.ico`/`.png`, Android adaptive icon (incl. themed). Clef from Noto Music (OFL). |
+| Always-on-top pin for app and phone windows | ✅ | Pin button in the window's toolbar; remembered per window (each app, the phone screen, the camera), so it reopens pinned. |
 
 ## Next cycles
 

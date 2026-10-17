@@ -496,8 +496,21 @@ for (const b of document.querySelectorAll('#toolbar button')) {
       if (!magnifier) resetView();
     } else if (b.dataset.act === 'stats') toggleStats();
     else if (b.dataset.act === 'shot') screenshot();
+    else if (b.dataset.act === 'pin') setPinned(!pinned);
   });
 }
+
+// Always on top (the host remembers it per window)
+let pinned = P.get('pinned') === '1';
+function setPinned(on) {
+  pinned = on;
+  const b = $('[data-act=pin]');
+  b.classList.toggle('on', on);
+  b.title = on ? 'Kept on top (click to release)' : 'Keep on top';
+  send({ t: 'pin', on });
+}
+$('[data-act=pin]').classList.toggle('on', pinned);
+if (pinned) $('[data-act=pin]').title = 'Kept on top (click to release)';
 
 async function screenshot() {
   try {
