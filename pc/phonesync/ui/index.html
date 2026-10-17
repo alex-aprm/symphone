@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Symphone</title>
+<link rel="icon" href="/ui/icon.png">
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- ============================================================ sidebar -->
+  <aside id="nav">
+    <div class="who">
+      <button id="devBtn" class="dev-btn" title="Switch phone">
+        <img class="dev-pic" id="devPic" alt="" draggable="false">
+        <span class="dev-text"><b id="devName">Symphone</b><small id="devModel"></small></span>
+        <span class="ic chev" id="devChev">&#xE70D;</span>
+      </button>
+      <div id="devMenu" class="menu" hidden></div>
+      <div class="dev-status">
+        <span id="battery" class="battery" hidden></span>
+        <span id="conn" class="conn"></span>
+        <button id="reconnect" class="icon-btn" title="Reconnect now" hidden><span class="ic">&#xE72C;</span></button>
+      </div>
+      <button id="lockBtn" class="lock-btn" hidden>
+        <span class="ic ic-now"></span><span class="ic ic-hover"></span>
+        <span class="lbl-now"></span><span class="lbl-hover"></span>
+      </button>
+    </div>
+    <nav class="tabs">
+      <button data-tab="status"><span class="ic">&#xE80F;</span><span>Status</span><b id="notifCount" class="badge" hidden></b></button>
+      <button data-tab="photos"><span class="ic">&#xE91B;</span><span>Photos</span></button>
+      <button data-tab="files"><span class="ic">&#xE8B7;</span><span>Files</span></button>
+      <button data-tab="apps"><span class="ic">&#xE71D;</span><span>Apps</span></button>
+      <button data-tab="settings"><span class="ic">&#xE713;</span><span>Settings</span></button>
+      <button data-tab="display"><span class="ic">&#xE7F4;</span><span>Side display</span><i id="displayLive" class="live-dot" hidden></i></button>
+    </nav>
+  </aside>
+
+  <main>
+    <!-- ============================================================ STATUS -->
+    <section id="tab-status" class="tab">
+      <h1>Status</h1>
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="es-glyph ic">&#xE8EA;</div>
+        <h2>Add your phone</h2>
+        <p>Scan a QR code with the Symphone app on your phone, or plug it in with a USB cable (USB debugging on) — it pairs by itself.</p>
+        <button class="btn accent" data-pair-open>Add a phone</button>
+      </div>
+      <div id="statusBody" class="status-grid">
+        <div class="col">
+          <div class="hero card">
+            <img class="hero-pic" id="heroPic" alt="" draggable="false">
+            <div class="hero-info">
+              <div class="hero-name" id="heroName"></div>
+              <div class="t2" id="heroModel"></div>
+              <div class="hero-facts" id="heroFacts"></div>
+            </div>
+          </div>
+          <div class="quick-actions">
+            <button class="qa" data-act="phone"><span class="ic">&#xE8EA;</span><span>Phone screen</span></button>
+            <button class="qa" data-act="camera"><span class="ic">&#xE722;</span><span>Camera</span></button>
+            <button class="qa" data-act="drive"><span class="ic">&#xEC50;</span><span>Explorer</span></button>
+            <button class="qa" data-act="send"><span class="ic">&#xE898;</span><span>Send files</span></button>
+          </div>
+          <h3 class="sec">Quick settings</h3>
+          <div class="card qs-card">
+            <div id="qsTiles" class="qs-tiles"></div>
+            <div id="qsSliders" class="qs-sliders"></div>
+            <div id="qsErr" class="t3 qs-err"></div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="sec-row"><h3 class="sec">Notifications</h3><button class="link" id="clearHistory">Clear history</button></div>
+          <div id="notifList" class="notif-list"></div>
+          <div class="sep" id="historySep"><span>Earlier</span></div>
+          <div id="notifHistory" class="notif-list history"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ PHOTOS -->
+    <section id="tab-photos" class="tab tab-full">
+      <div class="page-head">
+        <h1>Photos</h1>
+        <div class="cmdbar">
+          <div class="seg" id="mediaFilter">
+            <button data-f="all" class="on">All</button><button data-f="camera">Camera</button><button data-f="screens">Screenshots</button><button data-f="video">Videos</button>
+          </div>
+          <span id="mediaInfo" class="t3"></span>
+          <div class="grow"></div>
+          <span id="selInfo" class="t2"></span>
+          <button class="btn" id="selClear" hidden>Clear</button>
+          <button class="btn accent" id="selDownload" hidden><span class="ic">&#xE896;</span> Download</button>
+          <span class="ic t3" title="Thumbnail size">&#xE71E;</span>
+          <input type="range" id="tileSize" min="96" max="320" value="168" title="Thumbnail size">
+        </div>
+      </div>
+      <div id="dateBadge" class="date-badge" hidden></div>
+      <div id="grid" class="grid-scroll"><div id="gridInner"></div></div>
+    </section>
+
+    <!-- ============================================================ FILES -->
+    <section id="tab-files" class="tab tab-full">
+      <div class="page-head">
+        <h1>Files</h1>
+        <div class="cmdbar">
+          <button class="icon-btn" id="fsUp" title="Up"><span class="ic">&#xE74A;</span></button>
+          <div id="crumbs" class="crumbs"></div>
+          <div class="grow"></div>
+          <button class="btn" data-act="drive"><span class="ic">&#xEC50;</span> Open in Explorer</button>
+          <button class="btn" id="fsUpload"><span class="ic">&#xE898;</span> Upload</button>
+          <button class="btn accent" id="fsDownload" disabled><span class="ic">&#xE896;</span> <span>Download</span></button>
+        </div>
+      </div>
+      <div class="fs-head"><span></span><span>Name</span><span>Size</span><span>Date modified</span></div>
+      <div id="fsList" class="fs-list"></div>
+      <div id="dropHint" class="drop-hint" hidden><span class="ic">&#xE898;</span>Drop to copy into this folder on the phone</div>
+    </section>
+
+    <!-- ============================================================ APPS -->
+    <section id="tab-apps" class="tab tab-full">
+      <div class="page-head">
+        <h1>Apps</h1>
+        <div class="cmdbar">
+          <div class="search"><span class="ic">&#xE721;</span><input id="appSearch" placeholder="Search apps"></div>
+          <label class="check"><input type="checkbox" id="appSystem"><span></span>System apps</label>
+          <div class="grow"></div>
+          <span class="t3">Opens in its own window — works while the phone is locked · Shift+click: on the phone's screen</span>
+        </div>
+      </div>
+      <div id="appGrid" class="app-grid"></div>
+    </section>
+
+    <!-- ============================================================ SETTINGS -->
+    <section id="tab-settings" class="tab">
+      <h1>Settings</h1>
+      <div class="settings">
+        <h3 class="sec">Phones</h3>
+        <div id="phoneList" class="group"></div>
+        <div class="group">
+          <button class="row clickable" data-pair-open>
+            <span class="ic row-ic">&#xE710;</span>
+            <span class="row-text"><b>Add a phone</b><small>Scan a QR code with the Symphone app, pair with a code, or plug in a USB cable</small></span>
+            <span class="ic chev">&#xE76C;</span>
+          </button>
+        </div>
+
+        <h3 class="sec">This PC</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE7F8;</span>
+            <span class="row-text"><b>PC name</b><small>How this PC appears on your phones</small></span>
+            <input class="text" data-set="pc_name"></div>
+        </div>
+
+        <h3 class="sec">Connection</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE701;</span>
+            <span class="row-text"><b>Links</b><small id="linkDetail">—</small></span></div>
+          <div class="row"><span class="ic row-ic">&#xE702;</span>
+            <span class="row-text"><b>Find phones with Bluetooth</b><small id="bleDetail">Reconnects as soon as your phone is nearby, even before it joins Wi‑Fi</small></span>
+            <label class="switch"><input type="checkbox" data-set="ble"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE839;</span>
+            <span class="row-text"><b>Wi‑Fi Direct fallback</b><small id="wfdDetail">When the phone is nearby but on another network (or none), this PC hosts a private Wi‑Fi Direct link for it</small></span>
+            <label class="switch"><input type="checkbox" data-set="wifi_direct"><span></span></label></div>
+        </div>
+
+        <h3 class="sec">Clipboard &amp; notifications</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE77F;</span>
+            <span class="row-text"><b>Shared clipboard</b><small>Copy on one device, paste on the other</small></span>
+            <label class="switch"><input type="checkbox" data-set="clipboard_sync"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xEA8F;</span>
+            <span class="row-text"><b>Show phone notifications on Windows</b><small>Click to open in a window, reply and use actions right in the notification</small></span>
+            <label class="switch"><input type="checkbox" data-set="toasts"><span></span></label></div>
+          <details class="row-exp">
+            <summary class="row"><span class="ic row-ic">&#xE7BA;</span>
+              <span class="row-text"><b>Apps that can notify</b><small>Turn off notifications from specific apps</small></span>
+              <span class="ic chev">&#xE70D;</span></summary>
+            <div id="mutedApps" class="app-toggles"></div>
+          </details>
+          <div class="row"><span class="ic row-ic">&#xE896;</span>
+            <span class="row-text"><b>File transfer notifications</b><small>Progress and completion for copies between PC and phone</small></span>
+            <label class="switch"><input type="checkbox" data-set="transfer_toasts"><span></span></label></div>
+        </div>
+
+        <h3 class="sec">Files &amp; photos</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xEC50;</span>
+            <span class="row-text"><b>Show the phone in File Explorer</b><small id="driveStatus"></small></span>
+            <label class="switch"><input type="checkbox" data-set="drive_enabled"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xEDA2;</span>
+            <span class="row-text"><b>Appears as</b><small>A device under This PC, or a drive letter</small></span>
+            <select data-set="drive_mode"><option value="device">Device</option><option value="letter">Drive letter</option></select>
+            <select id="driveLetter" title="Drive letter"></select></div>
+          <div class="row"><span class="ic row-ic">&#xE8B7;</span>
+            <span class="row-text"><b>Received files</b><small id="dlDir"></small></span>
+            <button class="btn" data-pickfor="downloads_dir">Change</button><button class="btn" data-open="downloads_dir">Open</button></div>
+          <div class="row"><span class="ic row-ic">&#xE91B;</span>
+            <span class="row-text"><b>Import new photos and videos</b><small id="impDir"></small></span>
+            <button class="btn" data-pickfor="import_dir">Change</button>
+            <label class="switch"><input type="checkbox" data-set="auto_import"><span></span></label></div>
+        </div>
+
+        <h3 class="sec">Phone screen &amp; apps</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE72E;</span>
+            <span class="row-text"><b>Phone PIN</b><small id="pinDetail">Stored encrypted with your Windows account and typed into the phone only to unlock it</small></span>
+            <input id="pin" class="text" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off">
+            <button class="btn" id="savePin">Save</button><button class="btn" id="clearPin">Remove</button></div>
+          <div class="row"><span class="ic row-ic">&#xE785;</span>
+            <span class="row-text"><b>Unlock when showing the phone's screen</b><small>Not needed for apps — they open on their own display, even while locked</small></span>
+            <label class="switch"><input type="checkbox" data-set="unlock_on_mirror"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE765;</span>
+            <span class="row-text"><b>Type with the PC keyboard</b><small>In app windows the phone keyboard stays hidden; any language works</small></span>
+            <label class="switch"><input type="checkbox" data-set="pc_keyboard"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE714;</span>
+            <span class="row-text"><b>Stream quality</b><small>Bitrate · frame rate · size</small></span>
+            <select data-set="mirror_bitrate"><option>8M</option><option>16M</option><option>24M</option><option>40M</option></select>
+            <select data-set="mirror_fps" data-num="1"><option>60</option><option>90</option><option>120</option></select>
+            <select data-set="mirror_max_size" data-num="1"><option value="0">Native</option><option>1920</option><option>1600</option><option>1280</option></select></div>
+          <div class="row"><span class="ic row-ic">&#xE767;</span>
+            <span class="row-text"><b>Phone sound on the PC while mirroring</b></span>
+            <label class="switch"><input type="checkbox" data-set="mirror_audio"><span></span></label></div>
+        </div>
+
+        <h3 class="sec">Camera</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE714;</span>
+            <span class="row-text"><b>Windows camera</b><small id="vcamInfo"></small></span>
+            <div class="seg" id="vcamFacing"><button data-f="back">Back</button><button data-f="front">Front</button></div></div>
+          <div class="row"><span class="ic row-ic">&#xE722;</span>
+            <span class="row-text"><b>Take a photo</b><small>Works with the phone locked; the photo lands in Photos a moment later</small></span>
+            <button class="btn" data-snap="back">Back camera</button><button class="btn" data-snap="front">Selfie</button></div>
+        </div>
+
+        <h3 class="sec">Audio &amp; calls</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE7F5;</span><span class="row-text"><b>PC sound → phone speaker</b></span>
+            <label class="switch"><input type="checkbox" data-audio="system"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE720;</span><span class="row-text"><b>PC microphone → phone speaker</b></span>
+            <label class="switch"><input type="checkbox" data-audio="mic"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE702;</span><span class="row-text"><b>Phone sound → PC speakers</b><small>Bluetooth audio</small></span>
+            <label class="switch"><input type="checkbox" data-audio="bt_sink"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE767;</span><span class="row-text"><b>Phone sound → PC speakers</b><small>Over USB / Wi‑Fi</small></span>
+            <label class="switch"><input type="checkbox" data-audio="output"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE720;</span><span class="row-text"><b>Phone microphone → PC microphone</b><small>Pick “CABLE Output” as the microphone in your app</small></span>
+            <label class="switch"><input type="checkbox" data-audio="mic-voice-communication" data-vmic="1"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE717;</span><span class="row-text"><b>Call audio → PC</b><small>Incoming calls (phone, Telegram, WhatsApp…) ring on the PC with Answer/Decline; this plays the call through the PC</small></span>
+            <label class="switch"><input type="checkbox" data-audio="voice-call"><span></span></label></div>
+          <div id="audioErr" class="row-err"></div>
+        </div>
+
+        <h3 class="sec">General</h3>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE7E8;</span><span class="row-text"><b>Start with Windows</b></span>
+            <label class="switch"><input type="checkbox" data-set="autostart"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE765;</span><span class="row-text"><b>Shortcuts</b>
+            <small>Ctrl+Alt+P phone screen · Ctrl+Alt+U unlock · Ctrl+Alt+L lock · Explorer: right‑click → Send to → your phone</small></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ SIDE DISPLAY -->
+    <section id="tab-display" class="tab">
+      <h1>Side display</h1>
+      <div class="settings">
+        <div class="display-hero card">
+          <div class="dh-art"><div class="dh-pc"></div><div class="dh-ph" id="dhPhone"></div></div>
+          <div><b id="dhTitle">Use your phone as a second display</b>
+            <p class="t2">It shows up in Windows like any monitor: arrange it, set its scale and move windows onto it. Touch on the phone works as touch on Windows.</p></div>
+        </div>
+        <div class="group">
+          <div class="row"><span class="ic row-ic">&#xE7F4;</span>
+            <span class="row-text"><b>Side display</b><small id="scInfo">Off</small></span>
+            <label class="switch"><input type="checkbox" id="scOn"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE7AD;</span>
+            <span class="row-text"><b>Orientation</b></span>
+            <div class="seg" id="scOrient"><button data-o="landscape">Landscape</button><button data-o="portrait">Portrait</button></div></div>
+          <div class="row"><span class="ic row-ic">&#xE740;</span>
+            <span class="row-text"><b>Text size</b><small id="scSizeHint">Size of text and apps on the phone display (DPI)</small></span>
+            <label class="check"><input type="checkbox" id="scAuto"><span></span>Automatic</label>
+            <input type="range" id="scSize" class="size-slider" min="0" max="12" step="1">
+            <b id="scSizeVal" class="size-val">300%</b></div>
+          <button class="row clickable" id="scDisplaySettings"><span class="ic row-ic">&#xE7F8;</span>
+            <span class="row-text"><b>Arrange displays</b><small>Windows display settings</small></span><span class="ic chev">&#xE8A7;</span></button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- photo viewer -->
+<div id="viewer" class="viewer" hidden>
+  <div class="v-top"><span id="vTitle"></span><div class="grow"></div>
+    <button class="vbtn" id="vOpen" title="Open in Windows"><span class="ic">&#xE8A7;</span></button>
+    <button class="vbtn" id="vSave" title="Download"><span class="ic">&#xE896;</span></button>
+    <button class="vbtn" id="vClose" title="Close (Esc)"><span class="ic">&#xE711;</span></button></div>
+  <button class="v-nav prev" id="vPrev"><span class="ic">&#xE76B;</span></button>
+  <div id="vStage" class="v-stage"></div>
+  <button class="v-nav next" id="vNext"><span class="ic">&#xE76C;</span></button>
+</div>
+
+<!-- pairing dialog -->
+<div id="pairDlg" class="dlg-backdrop" hidden>
+  <div class="dlg">
+    <h2>Add a phone</h2>
+    <div class="pair-grid">
+      <div class="qr-box"><div id="qr" class="qr"></div></div>
+      <ol class="steps">
+        <li>Install <b>Symphone</b> on your phone and open it</li>
+        <li>Tap <b>Scan QR code</b> and point the camera here</li>
+        <li>That's it — the phone connects over Wi‑Fi, Bluetooth or Wi‑Fi Direct</li>
+      </ol>
+    </div>
+    <p class="t3" id="pairHint"></p>
+    <details class="code-pair">
+      <summary>Pair with a code instead</summary>
+      <div id="candidates"></div>
+    </details>
+    <div class="dlg-foot"><span class="t3">Or connect the phone with a USB cable (USB debugging on)</span><div class="grow"></div><button class="btn" id="pairClose">Close</button></div>
+  </div>
+</div>
+
+<!-- generic menu/dialog for renames -->
+<div id="toast" class="toast" hidden></div>
+<script src="/ui/app.js"></script>
+</body>
+</html>

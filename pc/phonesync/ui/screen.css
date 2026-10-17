@@ -1,0 +1,73 @@
+/* Phone screen viewer — same palette as style.css */
+:root {
+  --bg: #0b0f14; --panel: #11161d; --panel2: #161c25; --line: #222a35; --text: #e6edf3; --muted: #8b98a8;
+  --accent: #2f81f7; --accent2: #1f6feb; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  --radius: 10px; color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f8fa; --panel: #ffffff; --panel2: #f0f3f6; --line: #d8dee4; --text: #1f2328; --muted: #59636e;
+    --accent: #0969da; --accent2: #0969da; color-scheme: light;
+  }
+}
+/* the viewer is always dark: phone content looks best on black */
+:root { --bg: #000; --bar: 44px; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+  font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; }
+
+#stage { position: fixed; inset: 0 0 var(--bar) 0; overflow: hidden; outline: none; touch-action: none; cursor: default; }
+#view { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+#screen { display: block; background: #000; image-rendering: auto; }
+body.zoomed #screen { image-rendering: pixelated; }
+body.magnifier #stage { cursor: grab; }
+body.magnifier.dragging #stage { cursor: grabbing; }
+
+#status { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); display: flex; align-items: center;
+  gap: 10px; padding: 10px 14px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line);
+  color: var(--muted); max-width: calc(100% - 32px); box-shadow: 0 8px 30px #0008; }
+#status span { white-space: pre-line; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+#status.error { color: var(--text); border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+#status.error .spinner { display: none; }
+#status button { border: 0; background: var(--accent2); color: #fff; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* controls live in their own strip under the picture, never over it */
+#toolbar { position: fixed; left: 0; right: 0; bottom: 0; height: var(--bar); display: flex; align-items: center;
+  justify-content: center; gap: 2px; padding: 0 6px; background: #101114; border-top: 1px solid #ffffff12;
+  overflow-x: auto; scrollbar-width: none; }
+#toolbar button { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px;
+  background: none; color: var(--muted); cursor: pointer; padding: 0; }
+#toolbar button:hover { background: var(--panel2); color: var(--text); }
+#toolbar button.on { color: #fff; background: var(--accent2); }
+#toolbar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;
+  stroke-linejoin: round; }
+#toolbar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; flex: none; }
+body.kind-app #toolbar .opt-nonapp, body.kind-camera #toolbar .opt-display, body:not(.kind-camera) #toolbar .opt-camera, body.virtual #toolbar .opt-main { display: none; }
+
+#stats { position: fixed; left: 8px; top: 8px; padding: 6px 9px; border-radius: 8px; font: 11.5px/1.45 ui-monospace, Consolas, monospace;
+  background: #000b; color: #cfe3ff; white-space: pre; pointer-events: none; }
+#zoomBadge { position: fixed; right: 8px; top: 8px; padding: 3px 8px; border-radius: 999px; background: var(--accent2);
+  color: #fff; font-size: 12px; pointer-events: none; }
+.toast { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); padding: 6px 12px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text); box-shadow: 0 6px 24px #000a;
+  pointer-events: none; transition: opacity .3s; }
+
+/* graceful hand-over: while the app is in use on the phone (or gone), its last frame stays, softly blurred; the
+   live picture sharpens back in when it returns */
+#screen { transition: filter .45s ease, transform .45s ease; transform-origin: 50% 50%; }
+body.away #screen { filter: blur(14px) saturate(.85) brightness(.82); transform: scale(1.06); }
+
+/* apps that forbid capture (FLAG_SECURE) render black off the phone: explain instead */
+#secure { position: fixed; inset: 0 0 var(--bar) 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px; padding: 28px; text-align: center; background: #000; color: #fff; }
+#secure svg { width: 40px; height: 40px; fill: none; stroke: #fff; stroke-width: 1.5; stroke-linecap: round; opacity: .85;
+  margin-bottom: 4px; }
+#secure b { font: 600 15px "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+#secure span { color: #ffffffa8; font-size: 12.5px; max-width: 300px; }
+#secure button { margin-top: 10px; border: 0; border-radius: 6px; padding: 7px 16px; background: var(--accent2); color: #fff;
+  font: 13px "Segoe UI", sans-serif; cursor: pointer; }
+#secure button:hover { filter: brightness(1.1); }

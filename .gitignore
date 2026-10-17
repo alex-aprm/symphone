@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+pc/.venv/
+pc/build/
+pc/dist/
+pc/*.spec
+pc/*.h264
+
+# Android
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
+*.jks
+
+# Native build outputs (built by sidecar/native/build.cmd and vcam/build.ps1)
+sidecar/bin/
+sidecar/native/obj/
+vcam/bin/
+vcam/obj/
+
+# Downloaded tools (scrcpy, rclone, svcl; see .github/workflows/release.yml) and local build outputs
+tools/
+dist/
+
+# Local material: test captures, logs, scratch
+sidecar/evidence/
+vcam/proof/
+attic/
+.elevated/
+*.log
+setup/elevated-broker*.ps1

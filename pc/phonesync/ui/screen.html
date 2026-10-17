@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Phone</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="screen.css">
+</head>
+<body>
+<div id="stage" tabindex="0">
+  <div id="view"><canvas id="screen" width="360" height="800"></canvas></div>
+</div>
+
+<div id="status"><div class="spinner"></div><span id="statusText">Connecting…</span>
+  <button id="retry" hidden>Reconnect</button></div>
+
+<div id="secure" hidden>
+  <svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><path d="M12 14.5v2"/></svg>
+  <b id="secureTitle">This app protects its screen</b>
+  <span>Android shows it only on the phone itself — it can't appear on a PC, in screenshots or recordings.</span>
+  <button id="toPhone">Continue on the phone</button>
+</div>
+<div id="stats" hidden></div>
+<div id="zoomBadge" hidden></div>
+
+<nav id="toolbar" aria-label="Phone controls">
+  <button data-key="BACK" title="Back (right click / Esc)"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></button>
+  <button data-key="HOME" title="Home (middle click)" class="opt-nonapp"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/></svg></button>
+  <button data-key="APP_SWITCH" title="Recent apps" class="opt-nonapp"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+  <span class="sep opt-nonapp"></span>
+  <button data-key="VOLUME_DOWN" title="Volume down"><svg viewBox="0 0 24 24"><path d="M4 10h3l5-4v12l-5-4H4z"/><path d="M16 12h4"/></svg></button>
+  <button data-key="VOLUME_UP" title="Volume up"><svg viewBox="0 0 24 24"><path d="M4 10h3l5-4v12l-5-4H4z"/><path d="M16 12h4M18 10v4"/></svg></button>
+  <span class="sep"></span>
+  <button data-cmd="notifications" title="Notifications" class="opt-display opt-main"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5h4"/></svg></button>
+  <button data-cmd="rotate" title="Rotate 90°" class="opt-display"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.1-5"/><path d="M17.5 3v4h-4"/></svg></button>
+  <button data-cmd="torch" title="Torch" class="opt-camera"><svg viewBox="0 0 24 24"><path d="M8 3h8l-1 6H9z"/><path d="M9 9h6v12H9z"/></svg></button>
+  <button data-act="shot" title="Copy screenshot to clipboard"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.2"/><path d="M8.5 6l1.5-2h4l1.5 2"/></svg></button>
+  <button data-act="zoom" title="View zoom (magnifier): wheel/pinch zooms this view, drag pans. Alt+wheel always zooms the view. Double-click to reset."><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/></svg></button>
+  <button data-act="stats" title="Stats (F2)"><svg viewBox="0 0 24 24"><path d="M5 19V11M10 19V6M15 19v-5M20 19V9"/></svg></button>
+</nav>
+
+<script src="screen.js"></script>
+</body>
+</html>

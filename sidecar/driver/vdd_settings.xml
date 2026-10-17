@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Symphone Sidecar: Virtual Display Driver settings (installed to C:\VirtualDisplayDriver\vdd_settings.xml).
+     Modes match the nubia NX741J panel (1216x2688): landscape, portrait and half resolution, 60/120 Hz, plus lower
+     modes for side-display text sizes beyond 200%. -->
+<vdd_settings>
+    <monitors>
+        <count>1</count>
+    </monitors>
+    <gpu>
+        <friendlyname>default</friendlyname>
+    </gpu>
+    <global>
+        <g_refresh_rate>60</g_refresh_rate>
+        <g_refresh_rate>120</g_refresh_rate>
+    </global>
+    <resolutions>
+        <resolution><width>2688</width><height>1216</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>1216</width><height>2688</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>2016</width><height>912</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>912</width><height>2016</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>1344</width><height>608</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>608</width><height>1344</height><refresh_rate>60</refresh_rate></resolution>
+        <!-- side display text size above 200% (Windows' own scaling stops there for this panel): lower modes -->
+        <resolution><width>1072</width><height>486</height><refresh_rate>60</refresh_rate></resolution>   <!-- 250% -->
+        <resolution><width>486</width><height>1072</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>896</width><height>406</height><refresh_rate>60</refresh_rate></resolution>   <!-- 300% -->
+        <resolution><width>406</width><height>896</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>768</width><height>348</height><refresh_rate>60</refresh_rate></resolution>   <!-- 350% -->
+        <resolution><width>348</width><height>768</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>672</width><height>304</height><refresh_rate>60</refresh_rate></resolution>   <!-- 400% -->
+        <resolution><width>304</width><height>672</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>600</width><height>270</height><refresh_rate>60</refresh_rate></resolution>   <!-- 450% -->
+        <resolution><width>270</width><height>600</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>536</width><height>244</height><refresh_rate>60</refresh_rate></resolution>   <!-- 500% -->
+        <resolution><width>244</width><height>536</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>488</width><height>222</height><refresh_rate>60</refresh_rate></resolution>   <!-- 550% -->
+        <resolution><width>222</width><height>488</height><refresh_rate>60</refresh_rate></resolution>
+        <resolution><width>448</width><height>202</height><refresh_rate>60</refresh_rate></resolution>   <!-- 600% -->
+        <resolution><width>202</width><height>448</height><refresh_rate>60</refresh_rate></resolution>
+    </resolutions>
+    <options>
+        <CustomEdid>false</CustomEdid>
+        <PreventSpoof>false</PreventSpoof>
+        <EdidCeaOverride>false</EdidCeaOverride>
+        <HardwareCursor>false</HardwareCursor>
+        <SDR10bit>false</SDR10bit>
+        <HDRPlus>false</HDRPlus>
+        <logging>false</logging>
+        <debuglogging>false</debuglogging>
+    </options>
+</vdd_settings>

@@ -1,0 +1,846 @@
+diff --git a/server/src/main/java/com/genymobile/scrcpy/Options.java b/server/src/main/java/com/genymobile/scrcpy/Options.java
+index 26a6ba9..a309c5a 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/Options.java
++++ b/server/src/main/java/com/genymobile/scrcpy/Options.java
+@@ -68,6 +68,7 @@ public class Options {
+     private boolean vdDestroyContent = true;
+     private boolean vdSystemDecorations = true;
+     private boolean flexDisplay;
++    private boolean contentGate; // PhoneSync patch
+ 
+     private boolean keepActive;
+     private boolean ignoreVideoEncoderConstraints;
+@@ -275,6 +276,10 @@ public class Options {
+         return flexDisplay;
+     }
+ 
++    public boolean getContentGate() {
++        return contentGate;
++    }
++
+     public boolean getIgnoreVideoEncoderConstraints() {
+         return ignoreVideoEncoderConstraints;
+     }
+@@ -533,6 +538,9 @@ public class Options {
+                 case "flex_display":
+                     options.flexDisplay = Boolean.parseBoolean(value);
+                     break;
++                case "content_gate":
++                    options.contentGate = Boolean.parseBoolean(value);
++                    break;
+                 case "capture_orientation":
+                     Pair<Orientation.Lock, Orientation> pair = parseCaptureOrientation(value);
+                     options.captureOrientationLock = pair.first;
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
+index 55d6e11..6569a67 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/Controller.java
+@@ -175,6 +175,13 @@ public class Controller implements AsyncProcessor, VirtualDisplayListener {
+         }
+     }
+ 
++    @Override
++    public void onContentState(boolean shown, String pkg) {
++        if (sender != null) {
++            sender.send(DeviceMessage.createContentState(shown, pkg));
++        }
++    }
++
+     public void setSurfaceCapture(SurfaceCapture surfaceCapture) {
+         this.surfaceCapture = surfaceCapture;
+     }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
+index 079a7a0..58b894d 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessage.java
+@@ -5,6 +5,7 @@ public final class DeviceMessage {
+     public static final int TYPE_CLIPBOARD = 0;
+     public static final int TYPE_ACK_CLIPBOARD = 1;
+     public static final int TYPE_UHID_OUTPUT = 2;
++    public static final int TYPE_CONTENT_STATE = 0x40; // PhoneSync patch
+ 
+     private int type;
+     private String text;
+@@ -37,6 +38,14 @@ public final class DeviceMessage {
+         return event;
+     }
+ 
++    public static DeviceMessage createContentState(boolean shown, String pkg) {
++        DeviceMessage event = new DeviceMessage();
++        event.type = TYPE_CONTENT_STATE;
++        event.id = shown ? 1 : 0;
++        event.text = pkg != null ? pkg : "";
++        return event;
++    }
++
+     public int getType() {
+         return type;
+     }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
+index a18a2e5..876908a 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
++++ b/server/src/main/java/com/genymobile/scrcpy/control/DeviceMessageWriter.java
+@@ -39,6 +39,13 @@ public class DeviceMessageWriter {
+                 dos.writeShort(data.length);
+                 dos.write(data);
+                 break;
++            case DeviceMessage.TYPE_CONTENT_STATE:
++                dos.writeByte(msg.getId());
++                byte[] pkg = msg.getText().getBytes(StandardCharsets.UTF_8);
++                int pkgLen = Math.min(pkg.length, 0xFFFF);
++                dos.writeShort(pkgLen);
++                dos.write(pkg, 0, pkgLen);
++                break;
+             default:
+                 throw new ControlProtocolException("Unknown event type: " + type);
+         }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/ContentGate.java b/server/src/main/java/com/genymobile/scrcpy/video/ContentGate.java
+new file mode 100644
+index 0000000..391a656
+--- /dev/null
++++ b/server/src/main/java/com/genymobile/scrcpy/video/ContentGate.java
+@@ -0,0 +1,170 @@
++package com.genymobile.scrcpy.video;
++
++import com.genymobile.scrcpy.util.Ln;
++
++import android.content.ComponentName;
++import android.os.IBinder;
++import android.os.SystemClock;
++
++import java.lang.reflect.Field;
++import java.lang.reflect.Method;
++import java.util.List;
++
++/**
++ * PhoneSync patch: tells whether a virtual display currently shows real app content, or only its home/launcher (or
++ * nothing). Polls the root tasks of the display through IActivityTaskManager; while "hidden" the capture must not
++ * deliver frames, so the PC keeps (and blurs) the last app frame instead of showing the launcher.
++ */
++public final class ContentGate {
++
++    public interface Listener {
++        /** Called on the gate thread on every state change (and once with the initial state). */
++        void onChanged(boolean shown, String pkg);
++    }
++
++    private static final int ACTIVITY_TYPE_HOME = 2;
++    private static final int ACTIVITY_TYPE_RECENTS = 3;
++    private static final long POLL_MS = 30;
++
++    private final int displayId;
++    private final Listener listener;
++    private volatile boolean shown;
++    private volatile String pkg = "";
++    private volatile boolean running;
++    private Thread thread;
++
++    private Object atm;
++    private Method getRootTasksOnDisplay;
++    private boolean broken;
++
++    public ContentGate(int displayId, Listener listener) {
++        this.displayId = displayId;
++        this.listener = listener;
++    }
++
++    public boolean isShown() {
++        return shown;
++    }
++
++    public String getPackage() {
++        return pkg;
++    }
++
++    private void prepare() throws ReflectiveOperationException {
++        Class<?> smClass = Class.forName("android.os.ServiceManager");
++        IBinder binder = (IBinder) smClass.getDeclaredMethod("getService", String.class).invoke(null, "activity_task");
++        atm = Class.forName("android.app.IActivityTaskManager$Stub").getMethod("asInterface", IBinder.class).invoke(null, binder);
++        getRootTasksOnDisplay = atm.getClass().getMethod("getAllRootTaskInfosOnDisplay", int.class);
++    }
++
++    private static Object field(Object o, String name) {
++        for (Class<?> c = o.getClass(); c != null; c = c.getSuperclass()) {
++            try {
++                Field f = c.getDeclaredField(name);
++                f.setAccessible(true);
++                return f.get(o);
++            } catch (NoSuchFieldException e) {
++                // try the superclass
++            } catch (IllegalAccessException e) {
++                return null;
++            }
++        }
++        return null;
++    }
++
++    private static boolean isLauncher(String p) {
++        String l = p.toLowerCase();
++        return l.contains("launcher") || l.equals("com.android.systemui");
++    }
++
++    /** Evaluates the display now. Returns null if the state can't be determined (keeps the previous state). */
++    private Object[] evaluate() {
++        try {
++            List<?> tasks = (List<?>) getRootTasksOnDisplay.invoke(atm, displayId);
++            if (tasks != null) {
++                // Root tasks come in z-order, top first: the topmost visible one decides.
++                for (Object t : tasks) {
++                    Object visible = field(t, "visible");
++                    if (visible == null) {
++                        visible = field(t, "isVisible");
++                    }
++                    if (Boolean.FALSE.equals(visible)) {
++                        continue;
++                    }
++                    Object type = field(t, "topActivityType");
++                    ComponentName top = (ComponentName) field(t, "topActivity");
++                    if (top == null) {
++                        top = (ComponentName) field(t, "baseActivity");
++                    }
++                    String p = top != null ? top.getPackageName() : "";
++                    boolean home = type instanceof Integer && ((Integer) type == ACTIVITY_TYPE_HOME || (Integer) type == ACTIVITY_TYPE_RECENTS);
++                    return new Object[] {!home && !p.isEmpty() && !isLauncher(p), p};
++                }
++            }
++            return new Object[] {false, ""};
++        } catch (Throwable e) {
++            if (!broken) {
++                broken = true;
++                Ln.w("Content gate: cannot read tasks of display " + displayId + ": " + e);
++            }
++            return null;
++        }
++    }
++
++    /** Synchronously computes the initial state, then polls on a background thread. */
++    public void start() {
++        try {
++            prepare();
++        } catch (ReflectiveOperationException e) {
++            Ln.w("Content gate unavailable (always shown): " + e);
++            shown = true;
++            listener.onChanged(true, "");
++            return;
++        }
++        Object[] r = evaluate();
++        shown = r == null || (Boolean) r[0];
++        pkg = r == null ? "" : (String) r[1];
++        Ln.i("Content gate on display " + displayId + ": " + (shown ? "shown " : "hidden ") + pkg);
++        listener.onChanged(shown, pkg);
++        running = true;
++        thread = new Thread(this::loop, "content-gate");
++        thread.setDaemon(true);
++        thread.start();
++    }
++
++    /** Re-evaluates immediately (cheap); used by capture loops right after grabbing a frame. */
++    public boolean checkNow() {
++        Object[] r = evaluate();
++        if (r != null) {
++            update((Boolean) r[0], (String) r[1]);
++        }
++        return shown;
++    }
++
++    private synchronized void update(boolean s, String p) {
++        if (s != shown || (s && !p.equals(pkg))) {
++            shown = s;
++            pkg = p;
++            Ln.i("Content gate on display " + displayId + ": " + (s ? "shown " : "hidden ") + p);
++            listener.onChanged(s, p);
++        }
++    }
++
++    private void loop() {
++        while (running) {
++            Object[] r = evaluate();
++            if (r != null) {
++                update((Boolean) r[0], (String) r[1]);
++            }
++            SystemClock.sleep(POLL_MS);
++        }
++    }
++
++    public void stop() {
++        running = false;
++        if (thread != null) {
++            thread.interrupt();
++            thread = null;
++        }
++    }
++}
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/NewDisplayCapture.java b/server/src/main/java/com/genymobile/scrcpy/video/NewDisplayCapture.java
+index 5ed4c73..88ebe2b 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/video/NewDisplayCapture.java
++++ b/server/src/main/java/com/genymobile/scrcpy/video/NewDisplayCapture.java
+@@ -61,10 +61,21 @@ public class NewDisplayCapture extends SurfaceCapture {
+     private final boolean vdDestroyContent;
+     private final boolean vdSystemDecorations;
+     private final boolean flexDisplay;
++    private final boolean contentGate;
++
++    // PhoneSync patch: content gate (no frames while the display shows only its home/launcher)
++    private ContentGate gate;
++    private Surface vdSurface; // the surface the virtual display renders into when shown (surface path)
++    private boolean screenshots;
++    private android.media.ImageReader park; // surface path: where the display renders while hidden (frames discarded)
++    private final Object gateLock = new Object(); // never hold `this` while calling into the display manager
+ 
+     private VideoConstraints videoConstraints;
+ 
+     private VirtualDisplay virtualDisplay;
++    private ScreenshotStreamer streamer;
++    private android.media.ImageReader sink;
++    private android.os.HandlerThread sinkThread;
+     private Size videoSize;
+     private Size displaySize; // the logical size of the display (including rotation)
+     private Size physicalSize; // the physical size of the display (without rotation)
+@@ -88,6 +99,11 @@ public class NewDisplayCapture extends SurfaceCapture {
+         this.vdDestroyContent = options.getVDDestroyContent();
+         this.vdSystemDecorations = options.getVDSystemDecorations();
+         this.flexDisplay = options.getFlexDisplay();
++        this.contentGate = options.getContentGate();
++        // PhoneSync patch: on ROMs that never composite shell-owned virtual displays (nubia/ZTE), render the display
++        // into a throwaway ImageReader and stream WindowManager screenshots of it instead.
++        this.screenshots = android.os.Build.MANUFACTURER.equalsIgnoreCase("nubia")
++                || android.os.Build.MANUFACTURER.equalsIgnoreCase("zte") || System.getProperty("scrcpy.screenshots") != null;
+     }
+ 
+     @Override
+@@ -227,12 +243,15 @@ public class NewDisplayCapture extends SurfaceCapture {
+                         | VIRTUAL_DISPLAY_FLAG_ALWAYS_UNLOCKED
+                         | VIRTUAL_DISPLAY_FLAG_TOUCH_FEEDBACK_DISABLED;
+                 if (Build.VERSION.SDK_INT >= AndroidVersions.API_34_ANDROID_14) {
+-                    flags |= VIRTUAL_DISPLAY_FLAG_OWN_FOCUS
+-                            | VIRTUAL_DISPLAY_FLAG_DEVICE_DISPLAY_GROUP;
++                    // PhoneSync patch: no DEVICE_DISPLAY_GROUP — that ties the virtual display's power state to the
++                    // main display, which wakes the physical screen (phone in a pocket must stay dark).
++                    flags |= VIRTUAL_DISPLAY_FLAG_OWN_FOCUS;
+                 }
+             }
++            // With the content gate (surface path), the display gets its surface only once it shows app content.
++            Surface initial = contentGate && !screenshots ? parkSurface() : surface;
+             VirtualDisplay vd = ServiceManager.getDisplayManager()
+-                    .createNewVirtualDisplay("scrcpy", displaySize.getWidth(), displaySize.getHeight(), dpi, surface, flags);
++                    .createNewVirtualDisplay("scrcpy", displaySize.getWidth(), displaySize.getHeight(), dpi, initial, flags);
+             setCurrentVirtualDisplay(vd); // used for client resize
+             int virtualDisplayId = vd.getDisplay().getDisplayId();
+             Ln.i("New display: " + displaySize.getWidth() + "x" + displaySize.getHeight() + "/" + dpi + " (id=" + virtualDisplayId + ")");
+@@ -241,6 +260,16 @@ public class NewDisplayCapture extends SurfaceCapture {
+                 ServiceManager.getWindowManager().setDisplayImePolicy(virtualDisplayId, displayImePolicy);
+             }
+ 
++            if (contentGate) {
++                gate = new ContentGate(virtualDisplayId, (shown, pkg) -> {
++                    applyGate(shown);
++                    if (vdListener != null) {
++                        vdListener.onContentState(shown, pkg);
++                    }
++                });
++                gate.start();
++            }
++
+             displayMonitor.start(virtualDisplayId, (props) -> {
+                 int reason;
+                 if (flexDisplay) {
+@@ -265,17 +294,57 @@ public class NewDisplayCapture extends SurfaceCapture {
+ 
+     @Override
+     public void start(Surface surface) throws IOException {
+-        if (displayTransform != null) {
++        // Screenshots come in the display's logical orientation (already rotated), unlike the raw virtual display
++        // buffer which stays in its physical orientation: only the filter transform applies then.
++        AffineMatrix glTransform = screenshots ? eventTransform : displayTransform;
++        Size glInputSize = screenshots ? displaySize : physicalSize;
++        if (glTransform != null) {
+             assert glRunner == null;
+-            OpenGLFilter glFilter = new AffineOpenGLFilter(displayTransform);
++            OpenGLFilter glFilter = new AffineOpenGLFilter(glTransform);
+             glRunner = new OpenGLRunner(glFilter);
+-            surface = glRunner.start(physicalSize, videoSize, surface);
++            surface = glRunner.start(glInputSize, videoSize, surface);
++        }
++        Surface target = surface;
++        if (screenshots) {
++            if (sinkThread == null) {
++                sinkThread = new android.os.HandlerThread("vd-sink");
++                sinkThread.start();
++            }
++            if (sink != null) {
++                sink.close();
++            }
++            sink = android.media.ImageReader.newInstance(displaySize.getWidth(), displaySize.getHeight(),
++                    android.graphics.PixelFormat.RGBA_8888, 2);
++            sink.setOnImageAvailableListener(r -> {
++                android.media.Image img = r.acquireLatestImage();
++                if (img != null) {
++                    img.close();
++                }
++            }, new android.os.Handler(sinkThread.getLooper()));
++            surface = sink.getSurface();
+         }
+ 
+-        if (virtualDisplay == null) {
+-            startNew(surface);
+-        } else {
+-            virtualDisplay.setSurface(surface);
++        synchronized (gateLock) {
++            vdSurface = surface;
++            if (virtualDisplay == null) {
++                startNew(surface);
++            } else if (screenshots || gate == null || gate.isShown()) {
++                virtualDisplay.setSurface(surface);
++            } else {
++                virtualDisplay.setSurface(parkSurface());
++            }
++        }
++
++        if (screenshots) {
++            int w = glRunner != null ? glInputSize.getWidth() : videoSize.getWidth();
++            int h = glRunner != null ? glInputSize.getHeight() : videoSize.getHeight();
++            streamer = new ScreenshotStreamer(target, w, h, 60, virtualDisplay.getDisplay().getDisplayId(), gate);
++            try {
++                streamer.start();
++            } catch (ReflectiveOperationException e) {
++                Ln.e("Screenshot capture of virtual display failed", e);
++                streamer = null;
++            }
+         }
+ 
+         if (vdListener != null) {
+@@ -284,8 +353,50 @@ public class NewDisplayCapture extends SurfaceCapture {
+         }
+     }
+ 
++    /** Surface path: detach the display from the encoder while hidden, so the encoder keeps its last frame. */
++    private void applyGate(boolean shown) {
++        synchronized (gateLock) {
++            VirtualDisplay vd = virtualDisplay;
++            if (screenshots || vd == null) {
++                return;
++            }
++            Surface target = shown && vdSurface != null ? vdSurface : parkSurface();
++            Ln.i("gate: display surface -> " + (target == vdSurface ? "encoder" : "parked") + " (gl=" + (glRunner != null) + ")");
++            vd.setSurface(target);
++        }
++    }
++
++    // called with gateLock held
++    private Surface parkSurface() {
++        if (park == null || park.getWidth() != displaySize.getWidth() || park.getHeight() != displaySize.getHeight()) {
++            if (park != null) {
++                park.close();
++            }
++            if (sinkThread == null) {
++                sinkThread = new android.os.HandlerThread("vd-sink");
++                sinkThread.start();
++            }
++            park = android.media.ImageReader.newInstance(displaySize.getWidth(), displaySize.getHeight(),
++                    android.graphics.PixelFormat.RGBA_8888, 2);
++            park.setOnImageAvailableListener(r -> {
++                android.media.Image img = r.acquireLatestImage();
++                if (img != null) {
++                    img.close();
++                }
++            }, new android.os.Handler(sinkThread.getLooper()));
++        }
++        return park.getSurface();
++    }
++
+     @Override
+     public void stop() {
++        synchronized (gateLock) {
++            vdSurface = null;
++        }
++        if (streamer != null) {
++            streamer.stop();
++            streamer = null;
++        }
+         if (glRunner != null) {
+             glRunner.stopAndRelease();
+             glRunner = null;
+@@ -294,6 +405,9 @@ public class NewDisplayCapture extends SurfaceCapture {
+ 
+     @Override
+     public void release() {
++        if (gate != null) {
++            gate.stop();
++        }
+         displayMonitor.stopAndRelease();
+ 
+         if (debouncer != null) {
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/ScreenCapture.java b/server/src/main/java/com/genymobile/scrcpy/video/ScreenCapture.java
+index 0768181..a41c66e 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/video/ScreenCapture.java
++++ b/server/src/main/java/com/genymobile/scrcpy/video/ScreenCapture.java
+@@ -46,6 +46,7 @@ public class ScreenCapture extends SurfaceCapture {
+ 
+     private IBinder display;
+     private VirtualDisplay virtualDisplay;
++    private ScreenshotStreamer screenshotStreamer;
+ 
+     private AffineMatrix transform;
+     private OpenGLRunner glRunner;
+@@ -107,8 +108,16 @@ public class ScreenCapture extends SurfaceCapture {
+ 
+     @Override
+     public void start(Surface surface) throws IOException {
++        if (screenshotStreamer != null) {
++            screenshotStreamer.stop();
++            screenshotStreamer = null;
++        }
+         if (display != null) {
+-            SurfaceControl.destroyDisplay(display);
++            try {
++                SurfaceControl.destroyDisplay(display);
++            } catch (Throwable e) {
++                com.genymobile.scrcpy.wrappers.DisplayControl.destroyVirtualDisplay(display);
++            }
+             display = null;
+         }
+         if (virtualDisplay != null) {
+@@ -129,7 +138,22 @@ public class ScreenCapture extends SurfaceCapture {
+             inputSize = videoSize;
+         }
+ 
+-        try {
++        // PhoneSync patch: some vendor ROMs (nubia/ZTE "NDMCtrl") accept the DisplayManager mirror request but never
++        // attach the source layer stack, yielding a black stream. Stream GPU screenshots there instead.
++        boolean preferScreenshots = displayId == 0 && (Build.MANUFACTURER.equalsIgnoreCase("nubia")
++                || Build.MANUFACTURER.equalsIgnoreCase("zte") || System.getProperty("scrcpy.screenshots") != null);
++        if (preferScreenshots) {
++            try {
++                screenshotStreamer = new ScreenshotStreamer(surface, inputSize.getWidth(), inputSize.getHeight(), 60);
++                screenshotStreamer.start();
++            } catch (Exception e) {
++                Ln.w("Screenshot capture unavailable, falling back to DisplayManager: " + e);
++                screenshotStreamer = null;
++            }
++        }
++        if (screenshotStreamer != null) {
++            // frames are produced by the screenshot thread
++        } else try {
+             virtualDisplay = ServiceManager.getDisplayManager()
+                     .createVirtualDisplay("scrcpy", inputSize.getWidth(), inputSize.getHeight(), displayId, surface);
+             Ln.d("Display: using DisplayManager API");
+@@ -160,7 +184,7 @@ public class ScreenCapture extends SurfaceCapture {
+         if (vdListener != null) {
+             int virtualDisplayId;
+             PositionMapper positionMapper;
+-            if (virtualDisplay == null || displayId == 0) {
++            if (virtualDisplay == null || displayId == 0 || screenshotStreamer != null) {
+                 // Surface control or main display: send all events to the original display, relative to the device size
+                 Size deviceSize = displayInfo.getSize();
+                 positionMapper = PositionMapper.create(videoSize, transform, deviceSize);
+@@ -176,6 +200,10 @@ public class ScreenCapture extends SurfaceCapture {
+ 
+     @Override
+     public void stop() {
++        if (screenshotStreamer != null) {
++            screenshotStreamer.stop();
++            screenshotStreamer = null;
++        }
+         if (glRunner != null) {
+             glRunner.stopAndRelease();
+             glRunner = null;
+@@ -187,7 +215,11 @@ public class ScreenCapture extends SurfaceCapture {
+         displayMonitor.stopAndRelease();
+ 
+         if (display != null) {
+-            SurfaceControl.destroyDisplay(display);
++            try {
++                SurfaceControl.destroyDisplay(display);
++            } catch (Throwable e) {
++                com.genymobile.scrcpy.wrappers.DisplayControl.destroyVirtualDisplay(display);
++            }
+             display = null;
+         }
+         if (virtualDisplay != null) {
+@@ -212,10 +244,27 @@ public class ScreenCapture extends SurfaceCapture {
+         // On Android 12 preview, SDK_INT is still R (not S), but CODENAME is "S".
+         boolean secure = Build.VERSION.SDK_INT < AndroidVersions.API_30_ANDROID_11 || (Build.VERSION.SDK_INT == AndroidVersions.API_30_ANDROID_11
+                 && !"S".equals(Build.VERSION.CODENAME));
+-        return SurfaceControl.createDisplay("scrcpy", secure);
++        try {
++            return SurfaceControl.createDisplay("scrcpy", secure);
++        } catch (NoSuchMethodException e) {
++            return com.genymobile.scrcpy.wrappers.DisplayControl.createVirtualDisplay("scrcpy", secure);
++        }
+     }
+ 
+     private static void setDisplaySurface(IBinder display, Surface surface, Rect deviceRect, Rect displayRect, int layerStack) {
++        try {
++            // PhoneSync patch: Android 16 removed the static helpers; use a SurfaceControl.Transaction instance.
++            Class<?> txClass = Class.forName("android.view.SurfaceControl$Transaction");
++            Object tx = txClass.getConstructor().newInstance();
++            txClass.getMethod("setDisplaySurface", IBinder.class, Surface.class).invoke(tx, display, surface);
++            txClass.getMethod("setDisplayProjection", IBinder.class, int.class, Rect.class, Rect.class)
++                    .invoke(tx, display, 0, deviceRect, displayRect);
++            txClass.getMethod("setDisplayLayerStack", IBinder.class, int.class).invoke(tx, display, layerStack);
++            txClass.getMethod("apply").invoke(tx);
++            return;
++        } catch (ReflectiveOperationException e) {
++            Ln.w("Transaction API unavailable, using static SurfaceControl: " + e);
++        }
+         SurfaceControl.openTransaction();
+         try {
+             SurfaceControl.setDisplaySurface(display, surface);
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/ScreenshotStreamer.java b/server/src/main/java/com/genymobile/scrcpy/video/ScreenshotStreamer.java
+new file mode 100644
+index 0000000..adbf52c
+--- /dev/null
++++ b/server/src/main/java/com/genymobile/scrcpy/video/ScreenshotStreamer.java
+@@ -0,0 +1,184 @@
++package com.genymobile.scrcpy.video;
++
++import com.genymobile.scrcpy.util.Ln;
++import com.genymobile.scrcpy.wrappers.DisplayControl;
++import com.genymobile.scrcpy.wrappers.SurfaceControl;
++
++import android.graphics.Bitmap;
++import android.graphics.Canvas;
++import android.graphics.Paint;
++import android.graphics.Rect;
++import android.hardware.HardwareBuffer;
++import android.os.IBinder;
++import android.os.SystemClock;
++import android.view.Surface;
++
++import java.lang.reflect.Method;
++
++/**
++ * PhoneSync patch: mirrors the main display by taking GPU screenshots (the path used by `screencap`) and drawing them
++ * into the encoder surface. Used on ROMs that block mirror virtual displays for the shell (e.g. nubia "NDMCtrl").
++ * Screenshots are HardwareBuffer-backed, so each frame stays on the GPU.
++ */
++public final class ScreenshotStreamer {
++
++    private final Surface surface;
++    private final int width;
++    private final int height;
++    private final int fps;
++    private volatile boolean running;
++    private Thread thread;
++
++    private Method captureMethod;
++    private Object captureArgs;
++
++    // Capture by display id (virtual displays) through IWindowManager.captureDisplay
++    private final int displayId;
++    private final ContentGate gate; // PhoneSync: no frames while the display shows only its home (may be null)
++    private Object windowManager;
++    private Method wmCaptureMethod;
++    private Method createSyncListenerMethod;
++
++    public ScreenshotStreamer(Surface surface, int width, int height, int fps) {
++        this(surface, width, height, fps, -1, null);
++    }
++
++    public ScreenshotStreamer(Surface surface, int width, int height, int fps, int displayId, ContentGate gate) {
++        this.surface = surface;
++        this.width = width;
++        this.height = height;
++        this.fps = fps > 0 ? fps : 60;
++        this.displayId = displayId;
++        this.gate = gate;
++    }
++
++    private void prepareCaptureById() throws ReflectiveOperationException {
++        Class<?> smClass = Class.forName("android.os.ServiceManager");
++        IBinder binder = (IBinder) smClass.getDeclaredMethod("getService", String.class).invoke(null, "window");
++        Class<?> stub = Class.forName("android.view.IWindowManager$Stub");
++        windowManager = stub.getMethod("asInterface", IBinder.class).invoke(null, binder);
++        for (Method m : windowManager.getClass().getMethods()) {
++            if (m.getName().equals("captureDisplay") && m.getParameterTypes().length == 3) {
++                wmCaptureMethod = m;
++            }
++        }
++        if (wmCaptureMethod == null) {
++            throw new NoSuchMethodException("IWindowManager.captureDisplay");
++        }
++        createSyncListenerMethod = Class.forName("android.window.ScreenCapture").getMethod("createSyncCaptureListener");
++    }
++
++    private Object captureById() throws ReflectiveOperationException {
++        Object listener = createSyncListenerMethod.invoke(null);
++        wmCaptureMethod.invoke(windowManager, displayId, null, listener);
++        return listener.getClass().getMethod("getBuffer").invoke(listener);
++    }
++
++    public static IBinder mainDisplayToken() {
++        try {
++            long[] ids = DisplayControl.getPhysicalDisplayIds();
++            if (ids != null && ids.length > 0) {
++                IBinder token = DisplayControl.getPhysicalDisplayToken(ids[0]);
++                if (token != null) {
++                    return token;
++                }
++            }
++        } catch (Throwable e) {
++            Ln.w("DisplayControl token: " + e);
++        }
++        return SurfaceControl.getBuiltInDisplay();
++    }
++
++    private void prepareCapture(IBinder token) throws ReflectiveOperationException {
++        Class<?> sc = Class.forName("android.window.ScreenCapture");
++        Class<?> argsClass = Class.forName("android.window.ScreenCapture$DisplayCaptureArgs");
++        Class<?> builderClass = Class.forName("android.window.ScreenCapture$DisplayCaptureArgs$Builder");
++        Object builder = builderClass.getConstructor(IBinder.class).newInstance(token);
++        try {
++            builderClass.getMethod("setSize", int.class, int.class).invoke(builder, width, height);
++        } catch (NoSuchMethodException e) {
++            Ln.w("DisplayCaptureArgs.setSize unavailable; capturing at native size");
++        }
++        captureArgs = builderClass.getMethod("build").invoke(builder);
++        captureMethod = sc.getMethod("captureDisplay", argsClass);
++    }
++
++    public void start() throws ReflectiveOperationException {
++        if (displayId >= 0) {
++            prepareCaptureById();
++        } else {
++            IBinder token = mainDisplayToken();
++            if (token == null) {
++                throw new ReflectiveOperationException("no display token");
++            }
++            prepareCapture(token);
++        }
++        running = true;
++        thread = new Thread(this::loop, "screenshot-capture");
++        thread.start();
++        Ln.i("Display: using screenshot capture " + width + "x" + height + " @" + fps + "fps");
++    }
++
++    private void loop() {
++        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
++        Rect dst = new Rect(0, 0, width, height);
++        long frameNs = 1_000_000_000L / fps;
++        int failures = 0;
++        while (running) {
++            long t0 = SystemClock.elapsedRealtimeNanos();
++            if (gate != null && !gate.isShown()) {
++                SystemClock.sleep(10);
++                continue;
++            }
++            try {
++                Object shot = displayId >= 0 ? captureById() : captureMethod.invoke(null, captureArgs);
++                if (shot == null) {
++                    throw new IllegalStateException("null screenshot");
++                }
++                HardwareBuffer hb = (HardwareBuffer) shot.getClass().getMethod("getHardwareBuffer").invoke(shot);
++                Bitmap bmp = (Bitmap) shot.getClass().getMethod("asBitmap").invoke(shot);
++                if (!running) {
++                    hb.close();
++                    break;
++                }
++                if (gate != null && !gate.checkNow()) {
++                    // the content changed to the launcher while this frame was taken: never deliver it
++                    hb.close();
++                    continue;
++                }
++                Canvas canvas = surface.lockHardwareCanvas();
++                try {
++                    canvas.drawBitmap(bmp, null, dst, paint);
++                } finally {
++                    surface.unlockCanvasAndPost(canvas);
++                }
++                hb.close();
++                failures = 0;
++            } catch (Throwable e) {
++                if (!running) {
++                    break;
++                }
++                if (++failures == 1 || failures % 100 == 0) {
++                    Ln.w("Screenshot capture failed (" + failures + "): " + e);
++                }
++                SystemClock.sleep(50);
++            }
++            long sleepNs = frameNs - (SystemClock.elapsedRealtimeNanos() - t0);
++            if (sleepNs > 0) {
++                SystemClock.sleep(sleepNs / 1_000_000L);
++            }
++        }
++    }
++
++    public void stop() {
++        running = false;
++        if (thread != null) {
++            try {
++                thread.join(500);
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++            }
++            thread = null;
++        }
++    }
++}
+diff --git a/server/src/main/java/com/genymobile/scrcpy/video/VirtualDisplayListener.java b/server/src/main/java/com/genymobile/scrcpy/video/VirtualDisplayListener.java
+index c079265..12b6489 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/video/VirtualDisplayListener.java
++++ b/server/src/main/java/com/genymobile/scrcpy/video/VirtualDisplayListener.java
+@@ -4,4 +4,8 @@ import com.genymobile.scrcpy.control.PositionMapper;
+ 
+ public interface VirtualDisplayListener {
+     void onNewVirtualDisplay(int displayId, PositionMapper positionMapper);
++
++    /** PhoneSync patch: content gate state of a new virtual display (app shown, or only home/nothing). */
++    default void onContentState(boolean shown, String pkg) {
++    }
+ }
+diff --git a/server/src/main/java/com/genymobile/scrcpy/wrappers/DisplayControl.java b/server/src/main/java/com/genymobile/scrcpy/wrappers/DisplayControl.java
+index 88ca3d3..41bd6dd 100644
+--- a/server/src/main/java/com/genymobile/scrcpy/wrappers/DisplayControl.java
++++ b/server/src/main/java/com/genymobile/scrcpy/wrappers/DisplayControl.java
+@@ -79,4 +79,50 @@ public final class DisplayControl {
+             return null;
+         }
+     }
++
++    /** PhoneSync patch: SurfaceControl.createDisplay moved here in Android 14+ (signature varies by release). */
++    public static IBinder createVirtualDisplay(String name, boolean secure) throws ReflectiveOperationException {
++        if (CLASS == null) {
++            throw new ClassNotFoundException("DisplayControl unavailable");
++        }
++        for (Method m : CLASS.getDeclaredMethods()) {
++            if (!m.getName().equals("createVirtualDisplay") && !m.getName().equals("createDisplay")) {
++                continue;
++            }
++            Class<?>[] p = m.getParameterTypes();
++            Object[] args = new Object[p.length];
++            for (int i = 0; i < p.length; i++) {
++                if (p[i] == String.class) {
++                    args[i] = i == 0 ? name : name + "-" + System.nanoTime();
++                } else if (p[i] == boolean.class) {
++                    args[i] = secure;
++                } else if (p[i] == float.class) {
++                    args[i] = 0f;
++                } else {
++                    args[i] = null;
++                }
++            }
++            m.setAccessible(true);
++            Ln.i("DisplayControl." + m.getName() + " with " + p.length + " args");
++            return (IBinder) m.invoke(null, args);
++        }
++        throw new NoSuchMethodException("DisplayControl.createVirtualDisplay");
++    }
++
++    public static void destroyVirtualDisplay(IBinder token) {
++        if (CLASS == null) {
++            return;
++        }
++        for (Method m : CLASS.getDeclaredMethods()) {
++            if ((m.getName().equals("destroyVirtualDisplay") || m.getName().equals("destroyDisplay")) && m.getParameterTypes().length == 1) {
++                try {
++                    m.setAccessible(true);
++                    m.invoke(null, token);
++                } catch (ReflectiveOperationException e) {
++                    Ln.w("Could not destroy display: " + e);
++                }
++                return;
++            }
++        }
++    }
+ }

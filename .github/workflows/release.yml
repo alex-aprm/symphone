@@ -1,0 +1,126 @@
+# Builds everything and publishes a GitHub release when a version tag (v1.2.3) is pushed.
+#   apk            Android app (android.yml)
+#   scrcpy-server  scrcpy 5.0.1 server with scrcpy/symphone-server.patch
+#   windows        native helpers (MSVC), virtual camera, Windows app (PyInstaller), zip + release
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SCRCPY_VERSION: "5.0.1"
+  RCLONE_VERSION: "1.75.2"
+
+jobs:
+  apk:
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  scrcpy-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build the patched server
+        run: |
+          git clone --depth 1 --branch "v$SCRCPY_VERSION" https://github.com/Genymobile/scrcpy.git "$RUNNER_TEMP/scrcpy"
+          cd "$RUNNER_TEMP/scrcpy"
+          git apply "$GITHUB_WORKSPACE/scrcpy/symphone-server.patch"
+          ./gradlew :server:assembleRelease --no-daemon
+          cp server/build/outputs/apk/release/server-release-unsigned.apk "$GITHUB_WORKSPACE/scrcpy-server"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scrcpy-server
+          path: scrcpy-server
+
+  windows:
+    needs: [apk, scrcpy-server]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: scrcpy-server
+          path: server
+
+      - name: Tools (scrcpy + patched server, rclone, svcl)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force tools, "$env:RUNNER_TEMP\dl" | Out-Null
+          $dl = "$env:RUNNER_TEMP\dl"
+          Invoke-WebRequest "https://github.com/Genymobile/scrcpy/releases/download/v$env:SCRCPY_VERSION/scrcpy-win64-v$env:SCRCPY_VERSION.zip" -OutFile "$dl\scrcpy.zip"
+          Expand-Archive "$dl\scrcpy.zip" tools
+          Copy-Item server\scrcpy-server "tools\scrcpy-win64-v$env:SCRCPY_VERSION\scrcpy-server" -Force
+          Invoke-WebRequest "https://downloads.rclone.org/v$env:RCLONE_VERSION/rclone-v$env:RCLONE_VERSION-windows-amd64.zip" -OutFile "$dl\rclone.zip"
+          Expand-Archive "$dl\rclone.zip" tools
+          Invoke-WebRequest "https://www.nirsoft.net/utils/svcl-x64.zip" -OutFile "$dl\svcl.zip"
+          Expand-Archive "$dl\svcl.zip" tools\svcl
+          Get-ChildItem tools
+
+      - name: Native helpers (side display) and virtual camera
+        shell: pwsh
+        run: |
+          cmd /c sidecar\native\build.cmd
+          if ($LASTEXITCODE) { throw "sidecar build failed" }
+          & vcam\build.ps1
+
+      - name: Windows app
+        shell: pwsh
+        run: |
+          py -3.14 -m venv pc\.venv
+          pc\.venv\Scripts\python -m pip install --upgrade pip
+          pc\.venv\Scripts\pip install -r pc\requirements.txt
+          & pc\build.ps1
+
+      - name: Package
+        id: pkg
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.0.0-dev.$env:GITHUB_RUN_NUMBER" }
+          $app = "pc\dist\Symphone"
+          Copy-Item setup\install.ps1 $app
+          New-Item -ItemType Directory -Force "$app\setup", "$app\sidecar\driver", "$app\vcam" | Out-Null
+          Copy-Item setup\admin-setup.ps1 "$app\setup"
+          Copy-Item -Recurse sidecar\driver\* "$app\sidecar\driver"
+          Copy-Item vcam\install.ps1 "$app\vcam"
+          Copy-Item -Recurse vcam\bin "$app\vcam\bin"
+          Copy-Item LICENSE, THIRD_PARTY_NOTICES.md, README.md $app
+          $zip = "Symphone-$ver-windows-x64.zip"
+          Compress-Archive -Path $app -DestinationPath $zip
+          Copy-Item dist\Symphone.apk "Symphone-$ver.apk"
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "apk=Symphone-$ver.apk" >> $env:GITHUB_OUTPUT
+          "ver=$ver" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: symphone-windows
+          path: |
+            ${{ steps.pkg.outputs.zip }}
+            ${{ steps.pkg.outputs.apk }}
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create $env:GITHUB_REF_NAME "${{ steps.pkg.outputs.zip }}" "${{ steps.pkg.outputs.apk }}" `
+            --title "Symphone ${{ steps.pkg.outputs.ver }}" --generate-notes

@@ -1,0 +1,32 @@
+Symphone License (source-available)
+
+Copyright (c) 2026 alex-aprm (https://github.com/alex-aprm). All rights reserved.
+
+This repository contains the source code of Symphone, a Windows <-> Android companion (the Windows app, the Android
+app and their helper programs), together with the official builds published on its GitHub Releases page.
+
+1. Using the apps. Anyone may download, install and use the official Symphone builds (from this repository's
+   Releases, or built unmodified from this repository for their own use), on any number of devices, for personal
+   or commercial purposes, free of charge.
+
+2. Reading the code. You may read the source code, and report issues or suggest changes through this repository.
+   Forking it on GitHub for the purpose of proposing a pull request to this repository is permitted.
+
+3. What needs permission. Except as allowed in sections 1 and 2, you may not copy, modify, adapt, translate,
+   redistribute, sublicense, sell, or publish the source code or any part of it, or create, distribute or use
+   works derived from it (including incorporating it into other software), without prior written permission from
+   the copyright holder. To ask for permission, open an issue in this repository.
+
+4. Redistributing builds. You may share unmodified official builds, free of charge, as long as this license and
+   the third-party notices travel with them. Modified builds may not be distributed.
+
+5. Contributions. By submitting a contribution (for example a pull request), you agree that it may be used under
+   this license and any future license of the project.
+
+6. Third-party components keep their own licenses (see THIRD_PARTY_NOTICES.md); nothing here restricts rights
+   those licenses give you for those components.
+
+7. No warranty. The software is provided "as is", without warranty of any kind, express or implied, including but
+   not limited to the warranties of merchantability, fitness for a particular purpose and non-infringement. In no
+   event shall the copyright holder be liable for any claim, damages or other liability arising from, out of or
+   in connection with the software or its use.

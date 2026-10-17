@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Direct share: one dynamic long-lived shortcut per paired PC (see Shortcuts.kt) is matched to ShareActivity. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="dev.phonesync.ShareActivity">
+        <data android:mimeType="*/*" />
+        <category android:name="dev.phonesync.SHARE_TARGET" />
+    </share-target>
+</shortcuts>
