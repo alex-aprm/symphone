@@ -198,6 +198,35 @@ async def cast_session(core, q):
     return sess, "phone screen (casting)"
 
 
+async def _cast_unlock(core, sess):
+    """Debug-free: only the phone's own screen can be shown, so a locked phone would show black. Wake and unlock it
+    with the saved PIN (typed once by the phone app, never retried); remembered, so closing the window locks it again."""
+    sess.ps_unlocked = False
+    if not settings["unlock_on_mirror"] or not settings.get_pin():
+        return
+    try:
+        if not await core.is_locked():
+            return
+        r = await core.unlock()
+        sess.ps_unlocked = bool(r.get("ok"))
+    except Exception as e:
+        log.info("unlock for casting: %s", e)
+
+
+async def _cast_done(core, sess, kind: str):
+    """Window closed: leave the phone as it was — an app opened from the PC goes away (home screen), and a phone this
+    window unlocked is locked again (unless another window still shows it)."""
+    try:
+        others = [s for s in sessions if getattr(s, "cast", False) and s.kind == "screen" and not s.closed]
+        if kind == "app" and not others:
+            await sess.send_json({"t": "global", "action": "home"})
+            await asyncio.sleep(0.3)
+        if getattr(sess, "ps_unlocked", False) and not others:
+            await core.lock()
+    except Exception as e:
+        log.debug("cast done: %s", e)
+
+
 async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
     # Websockets bypass CORS: only accept pages served by this very server.
     origin = req.headers.get("Origin", "")
@@ -259,6 +288,8 @@ async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
                 kbd.sessions_changed()
         sess.on_content = on_content
         sessions.add(sess)                  # visible to ensure_app_display() as soon as its display exists
+        if getattr(sess, "cast", False) and kind in ("screen", "app"):
+            await _cast_unlock(core, sess)
         if getattr(sess, "cast", False) or wireless(serial):
             sess.ps_wifi = True
             wifi_streams(core, +1)
@@ -315,6 +346,8 @@ async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
             sessions.discard(sess)
             if getattr(sess, "ps_wifi", False):
                 wifi_streams(core, -1)
+            if getattr(sess, "cast", False) and q.get("kind", "screen") in ("screen", "app"):
+                await _cast_done(core, sess, q.get("kind", "screen"))
             await sess.stop()
             if kbd:
                 kbd.sessions_changed()

@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.3** (Windows app; phone app 2.7.3, versionCode 13).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.4** (Windows app; phone app 2.7.3, versionCode 13).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,14 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.7.4
+
+| Request | Status | Notes |
+|---|---|---|
+| Phone / app windows on a locked phone without debugging | ✅ | Debugging-free mode can only show the phone's own screen: opening the window wakes and unlocks it with the saved PIN (typed once by Symphone control), and closing it locks the phone again. Verified on the nubia over Wi‑Fi with adb hidden: unlocked while open, live picture, locked and dozing after. |
+| Back to the home screen after leaving an app | ✅ | Closing an app window (debugging-free) presses Home before locking, so the app isn't left on the phone's screen. Verified (launcher on top afterwards). |
+| No "start recording?" dialog | ✅ | Verified on the nubia with phone app 2.7.3: `PROJECT_MEDIA` granted over USB, then casting starts with no dialog, locked or not. |
 
 ## 2.7.3
 
