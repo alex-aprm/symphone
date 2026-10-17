@@ -9,7 +9,7 @@ from .config import ADB, USB_FWD_PORT, PHONE_PORT, TOOLS_DIR, APP_DIR, NO_WINDOW
 
 log = logging.getLogger("adb")
 PKG = "dev.phonesync"
-APK_VERSION = 13                  # versionCode of the phone app bundled with this PC app
+APK_VERSION = 14                  # versionCode of the phone app bundled with this PC app
 APK = next((p for p in (TOOLS_DIR / "Symphone.apk", APP_DIR / "dist" / "Symphone.apk") if p.exists()), None)
 ALLOW_EMULATOR = os.environ.get("PHONESYNC_EMULATOR") == "1"     # treat emulators like USB phones (testing)
 # testing: only use these adb serials (comma separated), e.g. an emulator while a real phone is plugged in

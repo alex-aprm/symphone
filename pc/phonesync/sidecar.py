@@ -273,6 +273,10 @@ class Sidecar:
                 from . import adb
                 await adb.shell(f"input keyevent KEYCODE_WAKEUP ; am start -n {ACTIVITY} --es orientation {self.orientation}",
                                 self._serial)
+            elif getattr(core, "phone", None) is not None:
+                # Debugging-free: the phone app opens its display screen itself (it shows over the lock screen)
+                await core.phone.post_json("/api/sidecar", {"orientation": self.orientation}, timeout=5)
+                await asyncio.sleep(1.0)
             self._touch = TouchInjector()
             self._touch_rect()
         except Exception as e:

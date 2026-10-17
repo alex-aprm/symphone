@@ -87,6 +87,14 @@ object Api {
                 main.post { Hub.ctx.startActivity(i) }
                 resp.json(JSONObject().put("ok", true))
             }
+            "sidecar" -> {     // debugging-free side display: open the phone's display screen (shows over the lock screen)
+                val o = try { JSONObject(req.bodyText()).optString("orientation", "landscape") } catch (_: Exception) { "landscape" }
+                val i = Intent(Hub.ctx, SidecarActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    .putExtra("orientation", o)
+                main.post { try { Hub.ctx.startActivity(i) } catch (e: Exception) { android.util.Log.w("Symphone", "sidecar: $e") } }
+                resp.json(JSONObject().put("ok", true))
+            }
             "stream" -> {      // {ttl: s} while the PC streams video over Wi-Fi, renewed; 0 ends it
                 val ttl = try { JSONObject(req.bodyText()).optInt("ttl", 30) } catch (_: Exception) { 30 }
                 WifiPerf.lease(ttl.coerceIn(0, 120))
