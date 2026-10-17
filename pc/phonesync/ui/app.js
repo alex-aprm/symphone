@@ -120,7 +120,7 @@ function renderState(s) {
   const vc = s.vcam || {};
   $("#vcamInfo").textContent = !vc.installed ? "Not installed (run vcam\\install.ps1 once as admin)"
     : vc.active ? `In use · ${vc.size[0]}×${vc.size[1]} · ${vc.fps} fps` : `“${(d && d.name) || "Phone"} Camera” for Teams, Zoom, Camera… — starts the phone camera only while in use`;
-  $$("#vcamFacing button").forEach(x => x.classList.toggle("on", x.dataset.f === (vc.facing || "back")));
+  renderVcam(vc);
   $("#driveStatus").textContent = s.drive?.mounted ? (s.drive.mode === "letter" ? `Mounted as ${s.drive.letter}` : "Shown under This PC")
     : (s.drive?.error || (s.connected ? "Mounting…" : "Mounts when the phone is connected"));
   const nb = s.nearby || {};
@@ -616,7 +616,23 @@ document.addEventListener("click", async e => {
     if (paths?.length) { await api("/api/settings", { [b.dataset.pickfor]: paths[0] }); settingsLoad(); }
   }
 });
-$$("#vcamFacing button").forEach(b => b.onclick = () => api("/api/vcam", { facing: b.dataset.f }));
+// Windows camera: which phone camera, rotation (manual + follow the phone), mirror
+function renderVcam(vc) {
+  const sel = $("#vcamCamera"), cams = vc.cameras || [];
+  const opts = cams.length ? cams.map(c => [c.id, c.label + (cams.filter(x => x.label === c.label).length > 1 ? ` (${c.id})` : "")])
+    : [["", vc.facing === "front" ? "Front" : "Back"]];
+  const html = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  if (document.activeElement !== sel) sel.value = vc.camera || (cams.find(c => c.facing === (vc.facing || "back")) || {}).id || "";
+  $$("#vcamRotate button").forEach(b => b.classList.toggle("on", +b.dataset.r === (vc.rotate || 0)));
+  $("#vcamAuto").checked = !!vc.autorotate;
+  $("#vcamMirror").checked = !!vc.mirror;
+}
+$("#vcamCamera").onchange = e => api("/api/vcam", { camera: e.target.value });
+$$("#vcamRotate button").forEach(b => b.onclick = () => api("/api/vcam", { rotate: +b.dataset.r }));
+$("#vcamAuto").onchange = e => api("/api/vcam", { autorotate: e.target.checked });
+$("#vcamMirror").onchange = e => api("/api/vcam", { mirror: e.target.checked });
+fetch("/api/vcam").catch(() => { });          // fills the camera list once the phone is connected
 $$("[data-audio]").forEach(cb => cb.onchange = () =>
   api("/api/audio", { what: cb.dataset.audio, on: cb.checked, virtual_mic: !!cb.dataset.vmic }));
 
@@ -891,6 +907,7 @@ $("#scDisplaySettings").onclick = () => api("/api/open", { path: "ms-settings:di
   try { settings = await (await fetch("/api/settings")).json(); } catch { }
   renderDisplay(state);
   showTab(location.hash.slice(1) || store.get("tab2", "status"));
+  addEventListener("hashchange", () => location.hash.length > 1 && showTab(location.hash.slice(1)));
   await mediaLoad();
   await loadHistory();
 })();

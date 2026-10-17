@@ -141,7 +141,7 @@ class Nearby:
         if not c:
             c = {"ssid": f"DIRECT-PS-{settings['pc_id'][:4].upper()}", "pass": secrets.token_urlsafe(12)}
             settings["wfd_network"] = c
-        self.core.hub.wfd_creds = dict(c) if settings["wifi_direct"] else None
+        self.core.hub.wfd_creds = dict(c, prefer=bool(settings["wfd_prefer"])) if settings["wifi_direct"] else None
         return c
 
     def _want_wfd(self) -> bool:
@@ -150,6 +150,8 @@ class Nearby:
         hub = self.core.hub
         if hub.pair_secret:
             return True
+        if settings["wfd_prefer"] and any(settings.device(d) and settings.device(d).get("wfd_capable") for d in hub.phones):
+            return True                   # the preferred link: always up for phones that can use it
         now = time.time()
         for dev_id, p in hub.phones.items():
             if not p.connected and now - self.near.get(dev_id, 0) < 60:

@@ -10,8 +10,8 @@ android {
         applicationId = "dev.phonesync"
         minSdk = 30
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.4.0"
+        versionCode = 9
+        versionName = "2.5.0"
     }
 
     // Release signing: CI passes the key through environment variables (GitHub secrets); local builds use the

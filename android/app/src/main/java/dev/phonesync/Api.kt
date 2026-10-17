@@ -127,6 +127,11 @@ object Api {
                     resp.json(JSONObject().put("error", e.message ?: e.toString()), 404)
                 }
             }
+            "cameras" -> resp.json(JSONObject().put("cameras", Cameras.list()))
+            "camera" -> when (seg.getOrNull(1)) {
+                "orientation" -> resp.json(Cameras.orientation(req.query["id"]))
+                else -> resp.text(404, "unknown api")
+            }
             "torch" -> {
                 if (req.method == "POST") Torch.set(JSONObject(req.bodyText()).optBoolean("on"))
                 resp.json(JSONObject().put("on", Torch.on))
@@ -155,6 +160,8 @@ object Api {
             .put("storageFree", st.availableBytes).put("storageTotal", st.totalBytes)
             .put("screenOn", pm.isInteractive).put("locked", km.isKeyguardLocked)
             .put("wifiIp", Discovery.wifiIp() ?: "")
+            .put("wfdIp", WfdClient.network?.let { WfdClient.myIp(it) } ?: "")
+            .put("staConcurrency", WfdClient.concurrent)
             .put("notifAccess", NotifListener.instance != null)
             .put("allFiles", android.os.Environment.isExternalStorageManager())
             .put("mediaGen", Media.generation())
@@ -187,7 +194,7 @@ object Api {
             }
             sub == "wfd" && req.method == "POST" -> {
                 val ssid = body.optString("ssid")
-                Pcs.setWfd(me, if (ssid.isEmpty()) null else Wfd(ssid, body.optString("pass")))
+                Pcs.setWfd(me, if (ssid.isEmpty()) null else Wfd(ssid, body.optString("pass"), body.optBoolean("prefer")))
                 WfdClient.reevaluate()
                 resp.json(JSONObject().put("ok", true))
             }

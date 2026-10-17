@@ -89,3 +89,15 @@ GATT (phone = server):
 - `5e7c0003-…` WRITE (pairing request from the PC, while the phone has a pending QR pairing):
   `nonce(12) | AES-GCM(key=SHA-256(secret), plaintext = {"pc","n"})`.
 - `5e7c0004-…` READ (after a successful write): `nonce(12) | AES-GCM(key=SHA-256(secret), {"id","name","model","token","ip","port"})`.
+
+## Phone app 2.5 additions
+
+- `GET /api/cameras` → `{cameras: [{id, facing: back|front|external, label, fov, sensorOrientation}]}` — cameras an
+  app can open (ids as scrcpy uses them); `label` comes from the lens' field of view (main / ultra-wide / telephoto).
+- `GET /api/camera/orientation?id=<camera id>` → `{id, device, sensor, rotation}` — clockwise rotation that makes that
+  camera's frames upright for the phone's current physical orientation (Camera2 formula). The orientation sensor
+  only runs while this is polled (stops 15 s after the last call).
+- `POST /api/pc/wfd {ssid, pass, prefer}` — `prefer: true` asks the phone to keep the PC's Wi‑Fi Direct network
+  joined even while the LAN works, if it can stay on its own Wi‑Fi at the same time.
+- `/api/info` adds `wfdIp` (the phone's address on the PC's direct network, or "") and `staConcurrency`
+  (local-only STA + STA concurrency: the phone can use the direct link without leaving its Wi‑Fi).

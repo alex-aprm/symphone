@@ -11,8 +11,8 @@ import java.security.SecureRandom
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Credentials of a PC-hosted Wi-Fi Direct legacy network. */
-data class Wfd(val ssid: String, val pass: String) {
-    fun json(): JSONObject = JSONObject().put("ssid", ssid).put("pass", pass)
+data class Wfd(val ssid: String, val pass: String, val prefer: Boolean = false) {
+    fun json(): JSONObject = JSONObject().put("ssid", ssid).put("pass", pass).put("prefer", prefer)
 }
 
 /** One paired computer. Mutable fields are only changed through [Pcs] (which persists them). */
@@ -44,7 +44,7 @@ class Pc(
         fun from(o: JSONObject) = Pc(
             o.getString("id"), o.optString("name", "PC"), o.getString("token"), o.optBoolean("master"),
             o.optLong("lastSeen"), o.optString("lastIp"),
-            o.optJSONObject("wfd")?.let { w -> w.optString("ssid").takeIf { it.isNotEmpty() }?.let { Wfd(it, w.optString("pass")) } },
+            o.optJSONObject("wfd")?.let { w -> w.optString("ssid").takeIf { it.isNotEmpty() }?.let { Wfd(it, w.optString("pass"), w.optBoolean("prefer")) } },
             o.optInt("peerPort", Hub.PC_PEER_PORT),
         )
     }

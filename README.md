@@ -1,6 +1,16 @@
+<p align="center"><img src="docs/icon.png" width="128" alt="Symphone"></p>
+
 # Symphone
 
+[![Release](https://img.shields.io/github/v/release/alex-aprm/symphone)](https://github.com/alex-aprm/symphone/releases/latest)
+[![Android app](https://github.com/alex-aprm/symphone/actions/workflows/android.yml/badge.svg)](https://github.com/alex-aprm/symphone/actions/workflows/android.yml)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-alexaprm-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alexaprm)
+
 Windows 11 ⇄ Android companion. It has two parts: a Windows app (`pc/`) and an Android app (`android/`). The phone runs a small, fast server. The PC finds it over the same Wi‑Fi (UDP beacon + mDNS) or USB (`adb forward`) and uses **both links at once** for bulk transfers.
+
+| Status | Settings | Side display |
+|---|---|---|
+| ![Status](docs/screenshots/status.png) | ![Settings](docs/screenshots/settings.png) | ![Side display](docs/screenshots/display.png) |
 
 ## Install
 
@@ -53,14 +63,14 @@ The first time the phone is connected over USB with debugging enabled, the PC gr
 | Notifications | Windows toasts with app icons/avatars, action buttons, inline **reply**, and Dismiss. Clicking a toast opens it on the phone and shows the screen. The Notifications tab shows active notifications plus history. |
 | Control panel | A copy of the phone's quick‑settings drawer: Wi‑Fi, Bluetooth, mobile data, airplane, flashlight, DND, location, rotation, battery saver, dark mode, NFC, auto‑brightness, brightness and volume sliders. |
 | Calls | Incoming call toasts (phone, Telegram, WhatsApp…) with Answer/Decline, plus "Answer · audio on PC" (call audio to PC speakers). |
-| Audio bridge | PC sound → phone speaker, PC mic → phone, phone sound → PC (Bluetooth A2DP sink, or over USB/Wi‑Fi), phone mic → PC microphone (VB‑CABLE "CABLE Output"). |
+| Audio bridge | PC sound → phone speaker, PC mic → phone, phone sound → PC (Bluetooth A2DP sink, or over USB/Wi‑Fi), phone mic → PC microphone (VB‑CABLE "CABLE Output").. Switched-on routes are remembered and come back after restarts and reconnects. |
 | Sharing | Share sheet target **"PC (Symphone)"**: files go to `Downloads\Symphone` and text/links go to the PC clipboard. "Send clipboard to phone" works the other way. Quick Share for Windows is installed too. |
-| **Windows camera** | "Symphone Camera" is a real Media Foundation virtual camera (`vcam/`), usable in Teams, Zoom, Camera and browsers. The phone camera runs only while an app uses it (front/back is chosen in the Control panel). |
+| **Windows camera** | "Symphone Camera" is a real Media Foundation virtual camera (`vcam/`), usable in Teams, Zoom, Camera and browsers. The phone camera runs only while an app uses it. Settings › Camera: which phone camera, rotation, mirror, and *follow the phone's rotation* (the picture stays upright however the phone stands). |
 | **In-app viewer** | Phone screen, apps and the live camera open in Symphone windows (`scrcpy_client.py` + WebCodecs `ui/screen.*`): 60 fps, ~125 ms touch‑to‑photon. Touchpad pinch and two‑finger pan are sent as real multi‑touch, touchscreen multi‑touch passes through, and there are rotate, keys and view zoom. |
-| **Side display** | The phone becomes an extra Windows monitor (Virtual Display Driver, attached only while running). You arrange it and set its scale in Settings › Display. GPU H.264 encoding, ~30 ms latency, and phone touch becomes Windows touch. |
+| **Side display** | The phone becomes an extra Windows monitor (Virtual Display Driver, attached only while running). You arrange it and set its scale in Settings › Display. GPU H.264 encoding, ~30 ms latency, and phone touch becomes Windows touch.. Text size 100–600 % (Windows scales up to 200 %; larger sizes use a lower resolution the phone upscales), or Automatic. |
 | **Several phones / several PCs** | The PC keeps every paired phone connected at once (sidebar switcher; notifications from all of them). The phone keeps a list of PCs with one *main PC* (share sheet, clipboard), switchable on the phone or from the PC. Each PC has its own token. |
 | **Pairing** | Settings → *Add a phone* shows a QR code; the phone app's *Scan QR code* pairs over Wi‑Fi, then Wi‑Fi Direct, then Bluetooth LE (AES‑GCM, key from the QR secret). A 6‑digit code and USB (adb) pairing work too. Protocol: `docs/protocol-v2.md`. |
-| **Auto connect** | The phone announces itself on every Wi‑Fi join (UDP beacon + signed `/peer/hello`) and over Bluetooth LE; the PC reconnects at once. A nearby phone without a shared network gets a private Wi‑Fi Direct link hosted by the PC. |
+| **Auto connect** | The phone announces itself on every Wi‑Fi join (UDP beacon + signed `/peer/hello`) and over Bluetooth LE; the PC reconnects at once. A nearby phone without a shared network gets a private Wi‑Fi Direct link hosted by the PC. Phones that can keep their own Wi‑Fi while joined to another network use this direct link as the preferred one (Settings › Prefer Wi‑Fi Direct). |
 | **Shared clipboard** | Both ways, on by default. Phone → PC uses a tiny helper started over adb (`ShellClip`), since Android blocks background clipboard reads. |
 | **Hand‑over** | When an app shown in a PC window is opened (or closed) on the phone itself, the PC window keeps its last frame, blurred: the patched scrcpy server's *content gate* stops frames the moment the app leaves its display, so the launcher never shows. Once the phone is put down (or the app is left there) it moves back and the live picture sharpens in; clicking the blurred window brings it back at once. |
 | **Send to** | Explorer → right‑click → *Send to* → one entry per phone; on the phone the share sheet has *Send to PC* plus one direct‑share target per PC. Transfers show one native Windows progress notification per job. |
@@ -92,6 +102,14 @@ Internal identifiers still carry the project's former name, PhoneSync (Android p
 - The phone's lock screen and FLAG_SECURE apps (banking) are black in mirrors. This is by design in Android.
 - USB runs through adb at ~40 MB/s (looks like a USB 2.0 cable/port; a USB 3 cable should help). The PC is on Wi‑Fi too, so Wi‑Fi traffic crosses the air twice; wiring the PC to the router roughly doubles Wi‑Fi throughput.
 - Cellular calls: the phone's mic is used for talking. Fully duplex calls on the PC need Phone Link (Bluetooth HFP) or the Telegram/WhatsApp desktop apps.
+
+## Status and roadmap
+
+What has been asked for, what is done and verified, and what comes next: [docs/STATUS.md](docs/STATUS.md).
+
+## Support
+
+If Symphone is useful to you, you can [buy me a coffee](https://buymeacoffee.com/alexaprm). ☕
 
 ## License
 

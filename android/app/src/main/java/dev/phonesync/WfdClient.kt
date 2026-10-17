@@ -11,7 +11,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Wi-Fi Direct fallback: the PC hosts a Wi-Fi Direct "legacy" network (SSID + WPA2 passphrase, registered with
+ * Wi-Fi Direct link. When the PC prefers it (Wfd.prefer) and this phone can stay on its own Wi-Fi at the same time
+ * (STA + STA concurrency for local-only connections), the phone keeps the PC's direct network joined all the time:
+ * a one-hop link that doesn't depend on the router. Otherwise it is a fallback: the PC hosts a Wi-Fi Direct "legacy" network (SSID + WPA2 passphrase, registered with
  * POST /api/pc/wfd or taken from the pairing QR). When the phone is on no Wi-Fi at all, or the master PC's hellos
  * failed 3 times in a row, the phone requests that network with a WifiNetworkSpecifier (nothing is bound
  * process-wide) and says hello to the PC at 192.168.137.1:47801 over it. Released as soon as the LAN works again.
@@ -33,6 +35,16 @@ object WfdClient {
     @Volatile private var joining = false
 
     private val cm by lazy { Hub.ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
+
+    /** Joining the PC's network leaves the phone's own Wi-Fi (and internet) up. */
+    val concurrent: Boolean by lazy {
+        try {
+            android.os.Build.VERSION.SDK_INT >= 31 && Hub.ctx.getSystemService(android.net.wifi.WifiManager::class.java)
+                .isStaConcurrencyForLocalOnlyConnectionsSupported
+        } catch (_: Exception) { false }
+    }
+
+    private fun preferred(w: Wfd?): Boolean = w != null && w.prefer && concurrent
 
     private val helloLoop = object : Runnable {
         override fun run() {
@@ -56,11 +68,13 @@ object WfdClient {
         val m = Pcs.master
         val w = m?.wfd
         val noLan = Arrival.wifiNetwork == null || Arrival.masterFails.get() >= 3
-        if (w != null && noLan && System.currentTimeMillis() - failedAt > BACKOFF) request(w, m.id)
+        if (w != null && (noLan || preferred(w)) && System.currentTimeMillis() - failedAt > BACKOFF) request(w, m.id)
     }
 
-    /** The regular LAN path to the master works: drop the direct link. */
-    fun lanOk() { if (callback != null && !joining) release("lan ok") }
+    /** The regular LAN path to the master works: drop the direct link (unless it is the preferred one). */
+    fun lanOk() {
+        if (callback != null && !joining && !preferred(Pcs.byId(pcId)?.wfd)) release("lan ok")
+    }
 
     /**
      * Joins [w] (used by QR pairing) and waits until it is available. Returns the network or null.

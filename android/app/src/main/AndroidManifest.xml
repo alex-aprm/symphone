@@ -38,8 +38,8 @@
     <application
         android:name=".App"
         android:label="Symphone"
-        android:icon="@drawable/ic_launcher"
-        android:roundIcon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.DeviceDefault.DayNight"
         android:requestLegacyExternalStorage="true"
         android:largeHeap="true"

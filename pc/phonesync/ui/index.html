@@ -162,8 +162,11 @@
             <span class="row-text"><b>Find phones with Bluetooth</b><small id="bleDetail">Reconnects as soon as your phone is nearby, even before it joins Wi‑Fi</small></span>
             <label class="switch"><input type="checkbox" data-set="ble"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE839;</span>
-            <span class="row-text"><b>Wi‑Fi Direct fallback</b><small id="wfdDetail">When the phone is nearby but on another network (or none), this PC hosts a private Wi‑Fi Direct link for it</small></span>
+            <span class="row-text"><b>Wi‑Fi Direct</b><small id="wfdDetail">This PC hosts a private Wi‑Fi Direct link: used when the phone is nearby but on another network (or none)</small></span>
             <label class="switch"><input type="checkbox" data-set="wifi_direct"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE701;</span>
+            <span class="row-text"><b>Prefer Wi‑Fi Direct</b><small>A direct phone‑to‑PC link instead of going through the router, for phones that can stay on their own Wi‑Fi at the same time (the phone asks once to allow it)</small></span>
+            <label class="switch"><input type="checkbox" data-set="wfd_prefer"><span></span></label></div>
         </div>
 
         <h3 class="sec">Clipboard &amp; notifications</h3>
@@ -229,7 +232,16 @@
         <div class="group">
           <div class="row"><span class="ic row-ic">&#xE714;</span>
             <span class="row-text"><b>Windows camera</b><small id="vcamInfo"></small></span>
-            <div class="seg" id="vcamFacing"><button data-f="back">Back</button><button data-f="front">Front</button></div></div>
+            <select id="vcamCamera" title="Which phone camera"></select></div>
+          <div class="row"><span class="ic row-ic">&#xE7AD;</span>
+            <span class="row-text"><b>Rotate</b><small>Turns the picture clockwise</small></span>
+            <div class="seg" id="vcamRotate"><button data-r="0">0°</button><button data-r="90">90°</button><button data-r="180">180°</button><button data-r="270">270°</button></div></div>
+          <div class="row"><span class="ic row-ic">&#xE8B4;</span>
+            <span class="row-text"><b>Follow the phone's rotation</b><small>The picture stays upright whichever way the phone stands</small></span>
+            <label class="switch"><input type="checkbox" id="vcamAuto"><span></span></label></div>
+          <div class="row"><span class="ic row-ic">&#xE8AB;</span>
+            <span class="row-text"><b>Mirror</b><small>Flip left and right, like looking in a mirror</small></span>
+            <label class="switch"><input type="checkbox" id="vcamMirror"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE722;</span>
             <span class="row-text"><b>Take a photo</b><small>Works with the phone locked; the photo lands in Photos a moment later</small></span>
             <button class="btn" data-snap="back">Back camera</button><button class="btn" data-snap="front">Selfie</button></div>

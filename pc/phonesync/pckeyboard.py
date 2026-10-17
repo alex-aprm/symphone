@@ -131,11 +131,18 @@ class PcKeyboard:
             if _is_ours(cur):
                 self._serial = serial
                 if force:
-                    await self._lease()
+                    try:
+                        await self._lease()
+                    except Exception as e:
+                        log.info("keyboard lease: %s", e)
                 return True
             if cur and cur != "null":
                 self.prev = cur
-            await self._lease()                  # lease first: the keyboard checks it as soon as it is bound
+            try:
+                await self._lease()              # lease first: the keyboard checks it as soon as it is bound
+            except Exception as e:               # phone briefly unreachable (reinstall, link switch)
+                log.info("keyboard lease: %s", e)
+                return False
             rc, out = await sc.adb("shell", f"ime enable {OURS} >/dev/null; ime set {OURS}", serial=serial, timeout=8)
             if rc != 0 or "error" in out.lower() or "unknown" in out.lower():
                 log.info("ime set: %s", out.strip())

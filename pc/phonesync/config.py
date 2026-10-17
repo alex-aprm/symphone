@@ -70,6 +70,11 @@ DEFAULTS = {
     "pc_id": "",
     "pc_name": "",
     "clipboard_sync": True,
+    "vcam_camera_id": "",               # phone camera for the Windows webcam ("" = first one facing vcam_facing)
+    "vcam_mirror": False,               # flip left-right
+    "vcam_rotate": 0,                   # extra clockwise rotation, degrees
+    "vcam_autorotate": True,            # keep the picture upright as the phone is turned
+    "wfd_prefer": True,                 # Wi-Fi Direct as the preferred link for phones that can keep their Wi-Fi
     "pc_keyboard": True,
     "transfer_toasts": True,
     "ble": True,

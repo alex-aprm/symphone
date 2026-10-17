@@ -255,7 +255,7 @@ def build_app(core) -> web.Application:
         allowed = {"drive_letter", "drive_enabled", "auto_import", "import_dir", "downloads_dir", "unlock_on_mirror",
                    "toasts", "toast_muted_apps", "mirror_max_size", "mirror_bitrate", "mirror_fps",
                    "turn_screen_off", "autostart", "mirror_audio", "drive_mode", "display_name", "pc_name",
-                   "clipboard_sync", "pc_keyboard", "transfer_toasts", "ble", "wifi_direct", "sidecar_orientation", "sidecar_scale", "sidecar_size", "sidecar_size_auto"}
+                   "clipboard_sync", "pc_keyboard", "transfer_toasts", "ble", "wifi_direct", "wfd_prefer", "sidecar_orientation", "sidecar_scale", "sidecar_size", "sidecar_size_auto"}
         upd = {k: v for k, v in b.items() if k in allowed}
         if "pin" in b:
             settings.set_pin(str(b["pin"]).strip())
@@ -263,6 +263,14 @@ def build_app(core) -> web.Application:
         settings.update(**upd)
         if "autostart" in upd:
             winutil.set_autostart(bool(upd["autostart"]))
+        if "wfd_prefer" in upd or "wifi_direct" in upd:      # tell connected phones (join / leave the direct link)
+            core.nearby._wfd_creds()
+            for p in core.hub.phones.values():
+                if p.connected:
+                    try:
+                        await p.post_json("/api/pc/wfd", core.hub.wfd_creds or {"ssid": ""}, timeout=5)
+                    except Exception:
+                        pass
         if "pc_keyboard" in upd and screen_ws.kbd:
             if upd["pc_keyboard"]:
                 screen_ws.kbd.sessions_changed()
@@ -592,12 +600,31 @@ def build_app(core) -> web.Application:
     r.add_post("/api/controls", controls_set)
 
     async def vcam(req):
-        b = await req.json()
+        b = await req.json() if req.method == "POST" else {}
         if b.get("facing") in ("back", "front"):
             await core.camfeed.set_facing(b["facing"])
+        opts = {}
+        if "camera" in b:
+            opts["vcam_camera_id"] = str(b["camera"] or "")
+            cam = next((c for c in core.camfeed.cameras if c.get("id") == opts["vcam_camera_id"]), None)
+            if cam and cam.get("facing") in ("back", "front"):
+                core.camfeed.facing = cam["facing"]
+                settings["vcam_facing"] = cam["facing"]
+        if "mirror" in b:
+            opts["vcam_mirror"] = bool(b["mirror"])
+        if "rotate" in b:
+            opts["vcam_rotate"] = int(b["rotate"]) % 360 // 90 * 90
+        if "autorotate" in b:
+            opts["vcam_autorotate"] = bool(b["autorotate"])
+        if opts:
+            await core.camfeed.apply(**opts)
+        if req.method == "GET" or not core.camfeed.cameras:
+            if core.phone.connected:
+                await core.camfeed.list_cameras()
         core.ui_event("state", core.state())
         return j({"ok": True, **core.camfeed.status()})
     r.add_post("/api/vcam", vcam)
+    r.add_get("/api/vcam", vcam)
 
     async def sidecar(req):
         b = await req.json() if req.can_read_body else {}

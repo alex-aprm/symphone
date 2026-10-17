@@ -20,10 +20,18 @@ from .config import USB_FWD_PORT, PHONE_PORT, UDP_PORT, UI_PORT, settings
 log = logging.getLogger("phone")
 
 
+LINK_RANK = {"usb": 0, "wfd": 1, "wifi": 2}      # preferred link first; ties go to the lower latency
+
+
+def is_wfd_ip(ip: str) -> bool:
+    """Addresses on the Wi-Fi Direct network this PC hosts (Windows' group owner is 192.168.137.1)."""
+    return ip.startswith("192.168.137.")
+
+
 class Link:
     def __init__(self, name: str, kind: str):
         self.name = name
-        self.kind = kind            # "usb" | "wifi"
+        self.kind = kind            # "usb" | "wfd" (Wi-Fi Direct, one hop to the PC) | "wifi" (LAN)
         self.base: str | None = None
         self.healthy = False
         self.rtt = 0.0
@@ -51,6 +59,8 @@ class Phone:
         self.hub = hub
         self.usb = Link("USB", "usb")
         self.wifi = Link("Wi-Fi", "wifi")
+        self.wfd = Link("Wi-Fi Direct", "wfd")
+        self.wfd_ip = ""                        # the phone on this PC's Wi-Fi Direct network (from its hellos/info)
         self.info: dict = {}
         self.notifications: dict[str, dict] = {}
         self.listeners: list = []               # callables(phone, event, data)
@@ -84,8 +94,8 @@ class Phone:
     @property
     def links(self) -> list[Link]:
         """Healthy links, fastest-latency first."""
-        ls = [l for l in (self.usb, self.wifi) if l.healthy]
-        return sorted(ls, key=lambda l: (l.kind != "usb", l.rtt))
+        ls = [l for l in (self.usb, self.wfd, self.wifi) if l.healthy]
+        return sorted(ls, key=lambda l: (LINK_RANK[l.kind], l.rtt))
 
     @property
     def connected(self) -> bool:
@@ -177,7 +187,7 @@ class Phone:
             self._task.cancel()
         if self._events_task:
             self._events_task.cancel()
-        for l in (self.usb, self.wifi):
+        for l in (self.usb, self.wfd, self.wifi):
             l.healthy = False
             if l.session and not l.session.closed:
                 await l.session.close()
@@ -201,8 +211,10 @@ class Phone:
         self.usb.base = f"http://127.0.0.1:{USB_FWD_PORT}" if usb_ok else None
         ip = self.dev.get("last_ip")
         self.wifi.base = f"http://{ip}:{PHONE_PORT}" if ip else None
+        wip = self.wfd_ip or self.info.get("wfdIp") or ""
+        self.wfd.base = f"http://{wip}:{PHONE_PORT}" if wip else None
         changed = False
-        for link in (self.usb, self.wifi):
+        for link in (self.usb, self.wfd, self.wifi):
             ok = await self._ping(link)
             link.fails = 0 if ok else link.fails + 1
             # one missed ping is tolerated to avoid flapping on busy Wi-Fi
@@ -235,6 +247,10 @@ class Phone:
             upd = {"device_name": self.info.get("name", ""), "model": self.info.get("model", "")}
             if self.info.get("wifiIp"):
                 upd["last_ip"] = self.info["wifiIp"]
+            if self.info.get("wfdIp"):
+                self.wfd_ip = self.info["wfdIp"]
+            if self.info.get("staConcurrency"):
+                upd["wfd_capable"] = True       # can keep its Wi-Fi while on ours: the PC hosts the direct network
             self.set(**upd)
         except Exception as e:
             log.warning("info: %s", e)
@@ -415,7 +431,12 @@ class PhoneHub:
         p = self.phones.get(dev_id)
         if not p:
             return False
-        if ip and p.dev.get("last_ip") != ip:
+        if ip and is_wfd_ip(ip):
+            if p.wfd_ip != ip:
+                log.info("%s is on Wi-Fi Direct at %s (%s)", p.name, ip, how)
+                p.wfd_ip = ip
+            p.wake()
+        elif ip and p.dev.get("last_ip") != ip:
             log.info("%s is at %s (%s)", p.name, ip, how)
             p.set(last_ip=ip)
         if not p.connected:
