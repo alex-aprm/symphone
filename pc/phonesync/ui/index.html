@@ -266,6 +266,8 @@
 
         <h3 class="sec">General</h3>
         <div class="group">
+          <button class="row clickable" id="setupAgain"><span class="ic row-ic">&#xE7B8;</span>
+            <span class="row-text"><b>Setup assistant</b><small>Install the phone app, pair, permissions, wireless debugging and extras — step by step</small></span><span class="ic chev">&#xE76C;</span></button>
           <div class="row"><span class="ic row-ic">&#xE7E8;</span><span class="row-text"><b>Start with Windows</b></span>
             <label class="switch"><input type="checkbox" data-set="autostart"><span></span></label></div>
           <div class="row"><span class="ic row-ic">&#xE765;</span><span class="row-text"><b>Shortcuts</b>
@@ -315,24 +317,102 @@
 </div>
 
 <!-- pairing dialog -->
-<div id="pairDlg" class="dlg-backdrop" hidden>
-  <div class="dlg">
-    <h2>Add a phone</h2>
-    <div class="pair-grid">
-      <div class="qr-box"><div id="qr" class="qr"></div></div>
-      <ol class="steps">
-        <li>Install <b>Symphone</b> on your phone and open it</li>
-        <li>Tap <b>Scan QR code</b> and point the camera here</li>
-        <li>That's it — the phone connects over Wi‑Fi, Bluetooth or Wi‑Fi Direct</li>
-      </ol>
+<!-- first-run setup wizard (also "Add a phone") -->
+<div id="setup" class="setup" hidden>
+  <aside class="setup-rail">
+    <div class="setup-brand"><img src="/ui/icon.png" alt=""><b>Symphone setup</b></div>
+    <ol id="setupSteps">
+      <li data-s="app">Get the phone app</li>
+      <li data-s="pair">Connect your phone</li>
+      <li data-s="phone">Permissions on the phone</li>
+      <li data-s="wireless">Phone apps on this PC</li>
+      <li data-s="extras">Extras for this PC</li>
+      <li data-s="done">Done</li>
+    </ol>
+    <button class="link setup-skip" id="setupLater">Set up later</button>
+  </aside>
+  <section class="setup-main">
+    <div class="setup-page" data-s="app">
+      <h1>Install Symphone on your phone</h1>
+      <p class="t2">Scan this code with your phone's camera to download the app. Open the downloaded file and allow
+        installing it — Android asks once whether your browser may install apps.</p>
+      <div class="setup-qr-row">
+        <div class="qr-box"><div id="apkQr" class="qr"></div></div>
+        <div class="setup-side">
+          <div class="card setup-note"><span class="ic">&#xE88E;</span><div><b>Have a USB cable?</b>
+            <p class="t2">Turn on USB debugging on the phone (Settings › About phone › tap <i>Build number</i> 7 times,
+              then Settings › Developer options › USB debugging) and plug it in. Symphone installs and sets up the app
+              by itself — no tapping through permission screens.</p>
+            <p class="ok-line" id="usbLine" hidden><span class="ic">&#xE73E;</span> <span></span></p></div></div>
+          <p class="t3" id="apkUrl"></p>
+        </div>
+      </div>
     </div>
-    <p class="t3" id="pairHint"></p>
-    <details class="code-pair">
-      <summary>Pair with a code instead</summary>
-      <div id="candidates"></div>
-    </details>
-    <div class="dlg-foot"><span class="t3">Or connect the phone with a USB cable (USB debugging on)</span><div class="grow"></div><button class="btn" id="pairClose">Close</button></div>
-  </div>
+
+    <div class="setup-page" data-s="pair">
+      <h1>Connect your phone</h1>
+      <p class="t2">Open Symphone on your phone and tap <b>Scan QR code</b> — or scan it with the camera app.</p>
+      <div class="setup-qr-row">
+        <div class="qr-box"><div id="qr" class="qr"></div></div>
+        <div class="setup-side">
+          <p class="ok-line" id="pairedLine" hidden><span class="ic">&#xE73E;</span> <span></span></p>
+          <p class="t3" id="pairHint"></p>
+          <details class="code-pair">
+            <summary>Pair with the 6-digit code instead</summary>
+            <div id="candidates"></div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-page" data-s="phone">
+      <h1>Permissions on the phone</h1>
+      <p class="t2">The Symphone app on your phone walks you through these — each one is explained there, and where
+        Android can't ask directly it opens the right settings screen. This list updates live.</p>
+      <div id="phoneChecklist" class="group"></div>
+    </div>
+
+    <div class="setup-page" data-s="wireless">
+      <h1>Phone apps on this PC <span class="tag">optional</span></h1>
+      <p class="t2">Phone apps in PC windows, the phone's screen, typing with the PC keyboard and the clipboard from the
+        phone use Android's <b>wireless debugging</b>. Set it up once:</p>
+      <p class="ok-line" id="wirelessLine" hidden><span class="ic">&#xE73E;</span> <span></span></p>
+      <div class="setup-qr-row" id="wirelessPair">
+        <div class="qr-box"><div id="adbQr" class="qr"></div></div>
+        <ol class="steps">
+          <li>On the phone: <b>Settings › About phone</b>, tap <b>Build number</b> 7 times</li>
+          <li><b>Settings › Developer options › Wireless debugging</b> → turn it on</li>
+          <li>Tap <b>Pair device with QR code</b> and scan this code</li>
+          <li class="t3" id="adbState">Waiting for the phone…</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="setup-page" data-s="extras">
+      <h1>Extras for this PC <span class="tag">optional</span></h1>
+      <p class="t2">These need administrator rights; Windows asks once. You can add them later in Settings.</p>
+      <div class="group" id="extrasList"></div>
+      <p><button class="btn accent" id="extrasInstall">Install selected</button> <span class="t3" id="extrasMsg"></span></p>
+    </div>
+
+    <div class="setup-page" data-s="done">
+      <h1>You're all set</h1>
+      <p class="t2">Your phone reconnects by itself whenever it is nearby. A few things to try:</p>
+      <ul class="tips">
+        <li><b>Apps</b> — open any phone app in its own window, even with the phone locked</li>
+        <li><b>Status</b> — notifications you can reply to, quick settings, calls</li>
+        <li>Right-click a file in Explorer → <b>Send to</b> → your phone</li>
+        <li>Copy on one device, paste on the other</li>
+      </ul>
+    </div>
+
+    <footer class="setup-foot">
+      <button class="btn" id="setupBack">Back</button>
+      <div class="grow"></div>
+      <button class="btn" id="setupSkip">Skip</button>
+      <button class="btn accent" id="setupNext">Next</button>
+    </footer>
+  </section>
 </div>
 
 <!-- generic menu/dialog for renames -->

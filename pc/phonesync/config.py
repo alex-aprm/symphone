@@ -70,6 +70,7 @@ DEFAULTS = {
     "pc_id": "",
     "pc_name": "",
     "clipboard_sync": True,
+    "setup_done": False,                # the first-run wizard was finished (or skipped)
     "pinned_windows": [],               # viewer windows kept always on top ("app:<pkg>", "screen:", "camera:back")
     "vcam_camera_id": "",               # phone camera for the Windows webcam ("" = first one facing vcam_facing)
     "vcam_mirror": False,               # flip left-right

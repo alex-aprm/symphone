@@ -111,6 +111,38 @@ def build_app(core) -> web.Application:
         return j({"ok": True, "payload": payload, "svg": svg, "ips": payload.split("&a=")[1].split("&")[0]})
     r.add_post("/api/pair/start", pair_start)
 
+    # ------------------------------------------------------------ first-run setup wizard
+    async def setup_state(req):
+        from . import setup
+        return j(await setup.state(core))
+    r.add_get("/api/setup", setup_state)
+
+    async def setup_op(req):
+        from . import setup
+        b = await req.json()
+        op = b.get("op")
+        if op == "apk-qr":                      # QR code: download the phone app
+            import segno
+            return j({"ok": True, "url": setup.APK_URL,
+                      "svg": segno.make(setup.APK_URL, error="m").svg_inline(scale=6, dark="#000", light=None, border=2)})
+        if op == "adb-pair":                    # QR code for Wireless debugging > Pair device with QR code
+            import segno
+            text = core.adbm.start_qr_pair()
+            return j({"ok": True, "svg": segno.make(text, error="m").svg_inline(scale=6, dark="#000", light=None, border=2)})
+        if op == "adb-pair-stop":
+            core.adbm.stop_qr_pair()
+            return j({"ok": True})
+        if op == "extras":
+            return j(setup.install_extras(list(b.get("items") or [])))
+        if op == "done":
+            settings["setup_done"] = True
+            core.hub.pair_secret = None
+            core.adbm.stop_qr_pair()
+            core.ui_event("state", core.state())
+            return j({"ok": True})
+        return j({"ok": False, "error": "unknown op"}, 400)
+    r.add_post("/api/setup", setup_op)
+
     async def pair_stop(req):
         core.hub.pair_secret = None
         core.ui_event("state", core.state())

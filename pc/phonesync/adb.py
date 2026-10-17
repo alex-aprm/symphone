@@ -13,6 +13,8 @@ NO_WINDOW = subprocess.CREATE_NO_WINDOW
 APK_VERSION = 9                  # versionCode of the phone app bundled with this PC app
 APK = next((p for p in (TOOLS_DIR / "Symphone.apk", APP_DIR / "dist" / "Symphone.apk") if p.exists()), None)
 ALLOW_EMULATOR = os.environ.get("PHONESYNC_EMULATOR") == "1"     # treat emulators like USB phones (testing)
+# testing: only use these adb serials (comma separated), e.g. an emulator while a real phone is plugged in
+ADB_ONLY = {x for x in os.environ.get("SYMPHONE_ADB_ONLY", "").split(",") if x}
 
 
 async def run(*args, serial=None, timeout=15, check=False) -> tuple[int, str]:
@@ -47,6 +49,9 @@ class AdbManager:
         self._prepared: set[str] = set()
         self.on_change = None
         self._last_mdns = 0.0
+        # Wireless debugging pairing by QR code (setup wizard): {"name", "pass", "state", "error", "serial"}
+        self.qr_pair: dict = {}
+        self._qr_task: asyncio.Task | None = None
         self._last_unfreeze = 0.0
 
     @property
@@ -72,7 +77,7 @@ class AdbManager:
         res = []
         for line in out.splitlines()[1:]:
             parts = line.split()
-            if len(parts) >= 2:
+            if len(parts) >= 2 and (not ADB_ONLY or parts[0] in ADB_ONLY):
                 res.append((parts[0], parts[1]))
         return res
 
@@ -105,8 +110,9 @@ class AdbManager:
         if self.usb_serial and self.usb_serial not in self._prepared:
             await self.prepare(self.usb_serial)
         if self.wifi_serial and self.wifi_serial not in self._prepared:
-            await self.update_app(self.wifi_serial)
-            self._prepared.add(self.wifi_serial)
+            # Phones set up over wireless debugging alone get the same first-contact setup as over USB
+            # (install/update the app, permissions, pairing token).
+            await self.prepare(self.wifi_serial)
         if self.usb_serial and not self.forward_ok:
             rc, _ = await run("forward", f"tcp:{USB_FWD_PORT}", f"tcp:{PHONE_PORT}", serial=self.usb_serial)
             self.forward_ok = rc == 0
@@ -218,6 +224,69 @@ class AdbManager:
             self.wifi_serial = f"{ip}:5555"
         else:
             await run("disconnect", f"{ip}:5555", timeout=3)
+
+    # ---------- wireless debugging pairing by QR code ----------
+    def start_qr_pair(self) -> str:
+        """Starts pairing a phone's wireless debugging: returns the QR text for Android's
+        Settings > Developer options > Wireless debugging > Pair device with QR code (like Android Studio)."""
+        import secrets
+        name = f"symphone-{secrets.token_hex(3)}"
+        pw = secrets.token_urlsafe(8)
+        self.qr_pair = {"name": name, "pass": pw, "state": "waiting", "error": "", "serial": ""}
+        if self._qr_task and not self._qr_task.done():
+            self._qr_task.cancel()
+        self._qr_task = asyncio.create_task(self._qr_pair_loop(name, pw))
+        return f"WIFI:T:ADB;S:{name};P:{pw};;"
+
+    def stop_qr_pair(self):
+        if self._qr_task and not self._qr_task.done():
+            self._qr_task.cancel()
+        if self.qr_pair.get("state") not in ("done",):
+            self.qr_pair = {}
+
+    async def _qr_pair_loop(self, name: str, pw: str):
+        """The phone advertises `name` over mDNS once it scanned the QR: pair with it, then connect and set it up."""
+        st = self.qr_pair
+        try:
+            deadline = asyncio.get_running_loop().time() + 600
+            addr = None
+            while asyncio.get_running_loop().time() < deadline and not addr:
+                rc, out = await run("mdns", "services", timeout=5)
+                for line in out.splitlines():
+                    if line.startswith(name) and "_adb-tls-pairing" in line:
+                        addr = line.split()[-1]
+                if not addr:
+                    await asyncio.sleep(1)
+            if not addr:
+                st.update(state="error", error="The phone didn't show up. Scan the code again from Wireless debugging.")
+                return
+            st["state"] = "pairing"
+            rc, res = await run("pair", addr, pw, timeout=20)
+            if "Successfully paired" not in res:
+                st.update(state="error", error=res.strip() or "Pairing failed")
+                return
+            log.info("wireless debugging paired: %s", addr)
+            st["state"] = "connecting"
+            ip = addr.split(":")[0]
+            for _ in range(30):                   # the connect service follows the pairing within seconds
+                rc, out = await run("mdns", "services", timeout=5)
+                conn = next((l.split()[-1] for l in out.splitlines()
+                             if "_adb-tls-connect" in l and l.split()[-1].startswith(ip + ":")), None)
+                if conn:
+                    rc, res = await run("connect", conn, timeout=8)
+                    if "connected" in res:
+                        st.update(state="setting-up", serial=conn)
+                        await self.prepare(conn)
+                        st["state"] = "done"
+                        if self.on_change:
+                            self.on_change()
+                        return
+                await asyncio.sleep(1)
+            st.update(state="error", error="Paired, but couldn't connect. Keep Wireless debugging on and try again.")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            st.update(state="error", error=str(e))
 
     # ---------- interactive helpers ----------
 

@@ -136,6 +136,38 @@ def install_shell_integration(icon: Path, hub=None):
         install_send_to(hub)
 
 
+def cleanup():
+    """Undo what the app set up in Windows (uninstaller): autostart, Start menu entry, Send to, Explorer, links."""
+    import os
+    from .config import settings
+    try:
+        set_autostart(False)
+    except OSError:
+        pass
+    appdata = Path(os.environ["APPDATA"])
+    sendto = appdata / "Microsoft" / "Windows" / "SendTo"
+    for n in list(settings["sendto_links"] or []) + ["Phone (PhoneSync).lnk", "Phone (Symphone).lnk"]:
+        try:
+            (sendto / n).unlink()
+        except OSError:
+            pass
+    for lnk in ("Symphone.lnk", "PhoneSync.lnk"):
+        try:
+            (appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs" / lnk).unlink()
+        except OSError:
+            pass
+    unregister_phone_folder()
+    ns = r"Software\Classes\CLSID" + "\\" + PHONE_NS_CLSID
+    for key in (r"Software\Classes\phonesync\shell\open\command", r"Software\Classes\phonesync\shell\open",
+                r"Software\Classes\phonesync\shell", r"Software\Classes\phonesync",
+                ns + r"\Instance\InitPropertyBag", ns + r"\Instance", ns + r"\ShellFolder",
+                ns + r"\InProcServer32", ns + r"\DefaultIcon", ns):
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key)
+        except OSError:
+            pass
+
+
 def register_protocol():
     """phonesync: URLs (notification clicks) start/notify this app."""
     cmd = " ".join(f'"{c}"' for c in exe_command()) + ' "%1"'

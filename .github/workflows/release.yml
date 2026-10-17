@@ -89,32 +89,30 @@ jobs:
           pc\.venv\Scripts\pip install -r pc\requirements.txt
           & pc\build.ps1
 
-      - name: Package
+      - name: Package (installer + zip)
         id: pkg
         shell: pwsh
         run: |
           $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.0.0-dev.$env:GITHUB_RUN_NUMBER" }
-          $app = "pc\dist\Symphone"
-          Copy-Item setup\install.ps1 $app
-          New-Item -ItemType Directory -Force "$app\setup", "$app\sidecar\driver", "$app\vcam" | Out-Null
-          Copy-Item setup\admin-setup.ps1 "$app\setup"
-          Copy-Item -Recurse sidecar\driver\* "$app\sidecar\driver"
-          Copy-Item vcam\install.ps1 "$app\vcam"
-          Copy-Item -Recurse vcam\bin "$app\vcam\bin"
-          Copy-Item LICENSE, THIRD_PARTY_NOTICES.md, README.md $app
-          $zip = "Symphone-$ver-windows-x64.zip"
-          Compress-Archive -Path $app -DestinationPath $zip
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Q "/DAppVersion=$ver" setup\symphone.iss
+          if ($LASTEXITCODE) { throw "installer build failed" }
+          Compress-Archive -Path pc\dist\Symphone -DestinationPath "Symphone-$ver-windows-x64.zip"
+          Copy-Item "dist\Symphone-Setup-$ver.exe" .
+          Copy-Item "dist\Symphone-Setup-$ver.exe" Symphone-Setup.exe     # stable names: releases/latest/download/...
           Copy-Item dist\Symphone.apk "Symphone-$ver.apk"
-          "zip=$zip" >> $env:GITHUB_OUTPUT
-          "apk=Symphone-$ver.apk" >> $env:GITHUB_OUTPUT
+          Copy-Item dist\Symphone.apk Symphone.apk
+          "files=Symphone-Setup-$ver.exe Symphone-Setup.exe Symphone-$ver-windows-x64.zip Symphone-$ver.apk Symphone.apk" >> $env:GITHUB_OUTPUT
           "ver=$ver" >> $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v5
         with:
           name: symphone-windows
           path: |
-            ${{ steps.pkg.outputs.zip }}
-            ${{ steps.pkg.outputs.apk }}
+            Symphone-Setup*.exe
+            Symphone-*.zip
+            Symphone*.apk
 
       - name: Publish release
         if: github.ref_type == 'tag'
@@ -122,5 +120,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release create $env:GITHUB_REF_NAME "${{ steps.pkg.outputs.zip }}" "${{ steps.pkg.outputs.apk }}" `
-            --title "Symphone ${{ steps.pkg.outputs.ver }}" --generate-notes
+          $files = "${{ steps.pkg.outputs.files }}".Split(" ")
+          gh release create $env:GITHUB_REF_NAME @files --title "Symphone ${{ steps.pkg.outputs.ver }}" --generate-notes

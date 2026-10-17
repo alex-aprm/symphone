@@ -37,6 +37,10 @@ def _send_paths(args):
 def main():
     args = sys.argv[1:]
     dev = args[args.index("--dev") + 1] if "--dev" in args and args.index("--dev") + 1 < len(args) else None
+    if "--cleanup" in args:                 # uninstaller: remove what the app added to Windows
+        from . import winutil
+        winutil.cleanup()
+        return
     url = next((a for a in args if a.lower().startswith("phonesync:")), None)
     if url:
         # Toast body click (also from Action Center): open that notification in the running instance.

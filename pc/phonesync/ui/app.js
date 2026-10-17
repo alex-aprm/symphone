@@ -209,7 +209,8 @@ function connectEvents() {
     renderNotifs();
   });
   es.addEventListener("paired", e => {
-    const d = JSON.parse(e.data); closePair(); toast(`${d.name || "Phone"} paired${d.via ? " over " + d.via : ""}`);
+    const d = JSON.parse(e.data); toast(`${d.name || "Phone"} paired${d.via ? " over " + d.via : ""}`);
+    if (pairOpen) pollSetup(); 
     apps.loaded = false; fs.loaded = false;
   });
   es.onerror = () => { };
@@ -808,21 +809,115 @@ $("#phoneList").addEventListener("click", async e => {
 });
 
 /* ---------------------------------------------------------------- pairing dialog */
-let pairOpen = false;
-async function openPair() {
-  pairOpen = true; $("#pairDlg").hidden = false;
-  $("#qr").innerHTML = `<span class="ic" style="font-size:24px;animation:spin 1s linear infinite">${G.spinner}</span>`;
-  const r = await api("/api/pair/start", {});
-  if (r.svg) $("#qr").innerHTML = r.svg;
-  $("#pairHint").textContent = r.ips ? `This PC: ${r.ips.replace(/,/g, ", ")} · the code is valid for 10 minutes` : "";
-  renderCandidates();
+// First-run setup wizard (also "Add a phone"): get the app → pair → phone permissions → wireless debugging →
+// extras → done. Polls /api/setup while open; steps tick themselves off as things happen.
+const STEPS = ["app", "pair", "phone", "wireless", "extras", "done"];
+let pairOpen = false, setupStep = "app", setupTimer = 0, setupSt = {}, phonesAtOpen = 0, extrasSel = null;
+// wantNew: opened to add another phone (a new pairing completes the "connect" step), not to finish setting up one
+async function openSetup(step, wantNew = false) {
+  $("#setup").hidden = false; pairOpen = true; renderSetup.advanced = false; extrasSel = null;
+  phonesAtOpen = wantNew ? (state.phones || []).length : 0;
+  await pollSetup();
+  showStep(step || (setupSt.connected ? "phone" : "app"));
+  clearInterval(setupTimer); setupTimer = setInterval(pollSetup, 2000);
 }
+const openPair = () => openSetup((state.phones || []).length ? "pair" : "app", (state.phones || []).length > 0);
 function closePair() {
   if (!pairOpen) return;
-  pairOpen = false; $("#pairDlg").hidden = true; api("/api/pair/stop", {});
+  pairOpen = false; $("#setup").hidden = true; clearInterval(setupTimer);
+  api("/api/pair/stop", {}); api("/api/setup", { op: "adb-pair-stop" });
 }
-$("#pairClose").onclick = closePair;
-$("#pairDlg").onclick = e => { if (e.target.id === "pairDlg") closePair(); };
+async function showStep(st) {
+  setupStep = st;
+  $$(".setup-page").forEach(p => p.classList.toggle("cur", p.dataset.s === st));
+  const i = STEPS.indexOf(st);
+  $("#setupBack").hidden = i === 0;
+  $("#setupSkip").hidden = !["wireless", "extras"].includes(st);
+  $("#setupNext").textContent = st === "done" ? "Start using Symphone" : "Next";
+  if (st === "app" && !$("#apkQr").innerHTML) {
+    const r = await api("/api/setup", { op: "apk-qr" });
+    $("#apkQr").innerHTML = r.svg || ""; $("#apkUrl").textContent = r.url || "";
+  }
+  if (st === "pair") {
+    $("#qr").innerHTML = `<span class="ic" style="font-size:24px;animation:spin 1s linear infinite">${G.spinner}</span>`;
+    const r = await api("/api/pair/start", {});
+    if (r.svg) $("#qr").innerHTML = r.svg;
+    $("#pairHint").textContent = r.ips ? `This PC: ${r.ips.replace(/,/g, ", ")} · the code is valid for 10 minutes` : "";
+    renderCandidates();
+  }
+  if (st === "wireless" && !setupSt.usb && !setupSt.wireless && !["pairing", "connecting", "setting-up", "done"].includes(setupSt.adb_pair?.state)) {
+    const r = await api("/api/setup", { op: "adb-pair" });
+    $("#adbQr").innerHTML = r.svg || "";
+  }
+  renderSetup();
+}
+async function pollSetup() {
+  try { setupSt = await (await fetch("/api/setup")).json(); } catch { return; }
+  renderSetup();
+}
+function renderSetup() {
+  const s = setupSt, phones = state.phones || [];
+  const paired = phones.length > phonesAtOpen;
+  const done = {
+    app: paired || s.usb, pair: paired && s.connected,
+    phone: (s.checklist || []).length > 0 && (s.checklist || []).filter(x => x.required).every(x => x.ok),
+    wireless: !!(s.usb || s.wireless || s.adb_pair?.state === "done"),
+    extras: Object.values(s.extras || {}).every(Boolean), done: false,
+  };
+  $$("#setupSteps li").forEach(li => {
+    li.classList.toggle("cur", li.dataset.s === setupStep); li.classList.toggle("ok", !!done[li.dataset.s] && li.dataset.s !== setupStep);
+  });
+  // step 1: USB path
+  const usb = $("#usbLine"); usb.hidden = !s.usb;
+  if (s.usb) usb.lastElementChild.textContent = paired ? "Phone connected over USB and set up" : "Phone connected over USB — setting up the app…";
+  // step 2: paired
+  const pl = $("#pairedLine"); pl.hidden = !paired;
+  if (paired) pl.lastElementChild.textContent = `Connected to ${phones[phones.length - 1]?.name || "your phone"}`;
+  // step 3: the phone's checklist
+  const cl = s.checklist;
+  $("#phoneChecklist").innerHTML = !cl ? `<div class="row"><span class="ic row-ic">${G.spinner}</span><span class="row-text"><b>Waiting for the phone…</b>
+      <small>Open Symphone on the phone (version 2.6 or newer shows its checklist here)</small></span></div>`
+    : cl.map(x => `<div class="row check-row"><span class="ic row-ic ${x.ok ? "ok" : x.ok === false ? "no" : ""}">${x.ok ? "\uE73E" : x.ok === false ? "\uE7BA" : "\uE9CE"}</span>
+      <span class="row-text"><b>${esc(x.title)}</b>${x.hint ? `<small>${esc(x.hint)}</small>` : ""}</span>
+      <span class="tag ${x.required ? "req" : ""}">${x.required ? "needed" : "optional"}</span></div>`).join("");
+  // step 4: wireless debugging
+  const wl = $("#wirelessLine"), ap = s.adb_pair || {};
+  const wdone = s.usb || s.wireless || ap.state === "done";
+  wl.hidden = !wdone; $("#wirelessPair").hidden = !!wdone;
+  if (wdone) wl.lastElementChild.textContent = s.usb ? "Set up over USB" : "Wireless debugging is set up";
+  $("#adbState").textContent = { waiting: "Waiting for the phone…", pairing: "Pairing…", connecting: "Connecting…",
+    "setting-up": "Setting up the phone…", done: "Done", error: ap.error || "Something went wrong" }[ap.state] || "Waiting for the phone…";
+  // step 5: extras
+  const ex = s.extras || {};
+  const items = [["winfsp", "Phone storage in Explorer", "A native drive (WinFsp); without it Symphone uses a slower WebDAV fallback"],
+    ["vbcable", "Phone microphone in Windows", "Use the phone as a microphone in any app (VB-CABLE)"],
+    ["display", "Phone as a second monitor", "The side display driver"],
+    ["webcam", "Phone camera as a webcam", "For Teams, Zoom, Camera and browsers"]];
+  if (!extrasSel) extrasSel = new Set(items.filter(([k]) => !ex[k]).map(([k]) => k));
+  const el = $("#extrasList");
+  if (!el.contains(document.activeElement)) el.innerHTML = items.map(([k, t, d]) => `<label class="row check-row">
+      <span class="ic row-ic ${ex[k] ? "ok" : ""}">${ex[k] ? "\uE73E" : "\uE710"}</span><span class="row-text"><b>${t}</b><small>${d}</small></span>
+      ${ex[k] ? `<span class="tag">installed</span>` : `<input type="checkbox" data-extra="${k}" ${extrasSel.has(k) ? "checked" : ""}>`}</label>`).join("");
+  $("#extrasInstall").disabled = !items.some(([k]) => !ex[k]);
+  // auto-advance when a step completes by itself
+  if (setupStep === "pair" && done.pair && !renderSetup.advanced) { renderSetup.advanced = true; setTimeout(() => showStep("phone"), 1200); }
+}
+$("#setupNext").onclick = async () => {
+  const i = STEPS.indexOf(setupStep);
+  if (setupStep === "done") { await api("/api/setup", { op: "done" }); closePair(); return; }
+  showStep(STEPS[i + 1]);
+};
+$("#setupSkip").onclick = () => showStep(STEPS[STEPS.indexOf(setupStep) + 1]);
+$("#setupBack").onclick = () => showStep(STEPS[Math.max(0, STEPS.indexOf(setupStep) - 1)]);
+$("#setupAgain") && ($("#setupAgain").onclick = () => openSetup("app"));
+$("#setupLater").onclick = async () => { await api("/api/setup", { op: "done" }); closePair(); };
+$("#setupSteps").onclick = e => { const li = e.target.closest("li"); if (li) showStep(li.dataset.s); };
+$("#extrasList").onchange = e => { const k = e.target.dataset.extra; if (k) e.target.checked ? extrasSel.add(k) : extrasSel.delete(k); };
+$("#extrasInstall").onclick = async () => {
+  const r = await api("/api/setup", { op: "extras", items: [...extrasSel] });
+  $("#extrasMsg").textContent = r.ok ? "Windows asks for permission, then installs in a separate window. This list updates when it's done."
+    : (r.error || "Couldn't start the installer");
+};
 function renderCandidates() {
   const el = $("#candidates");
   if (el.contains(document.activeElement)) return;
@@ -836,7 +931,7 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("[data-pair]"); if (!b) return;
   const ip = b.dataset.pair, code = $(`input[data-ip="${ip}"]`).value.trim();
   const r = await api("/api/pair", { ip, code });
-  if (r.ok) { toast("Paired"); closePair(); }
+  if (r.ok) { toast("Paired"); pollSetup(); }
 });
 
 /* ---------------------------------------------------------------- side display */
@@ -907,6 +1002,7 @@ $("#scDisplaySettings").onclick = () => api("/api/open", { path: "ms-settings:di
   try { settings = await (await fetch("/api/settings")).json(); } catch { }
   renderDisplay(state);
   showTab(location.hash.slice(1) || store.get("tab2", "status"));
+  fetch("/api/setup").then(r => r.json()).then(s => { if (!s.done && !s.phones) openSetup("app"); }).catch(() => { });
   addEventListener("hashchange", () => location.hash.length > 1 && showTab(location.hash.slice(1)));
   await mediaLoad();
   await loadHistory();

@@ -380,5 +380,39 @@ input[type=range]:hover::-webkit-slider-thumb { box-shadow: inset 0 0 0 3px var(
 .dlg-foot { display: flex; align-items: center; gap: 8px; margin: 0 -24px; padding: 20px 24px; background: var(--bg); border-top: 1px solid var(--stroke);
   border-radius: 0 0 var(--r) var(--r); }
 
+/* ================================================================ setup wizard */
+.setup { position: fixed; inset: 0; z-index: 75; display: flex; background: var(--bg); }
+:root.mica .setup { background: color-mix(in srgb, var(--flyout) 92%, transparent); backdrop-filter: blur(30px); }
+.setup-rail { width: 280px; flex: none; padding: 28px 20px; display: flex; flex-direction: column; gap: 18px;
+  border-right: 1px solid var(--stroke); }
+.setup-brand { display: flex; align-items: center; gap: 10px; font: 600 15px var(--font-d); }
+.setup-brand img { width: 32px; height: 32px; }
+#setupSteps { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: st; }
+#setupSteps li { counter-increment: st; display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: var(--r);
+  color: var(--text2); cursor: pointer; }
+#setupSteps li::before { content: counter(st); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid var(--control-stroke2); font-size: 12px; flex: none; }
+#setupSteps li.cur { background: var(--subtle-hover); color: var(--text); font-weight: 600; }
+#setupSteps li.cur::before { background: var(--acc); color: var(--on-acc); border-color: var(--acc); }
+#setupSteps li.ok::before { content: "\2713"; color: var(--ok); border-color: var(--ok); }
+.setup-skip { margin-top: auto; align-self: flex-start; }
+.setup-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.setup-page { flex: 1; overflow: auto; padding: 40px 48px 24px; display: none; }
+.setup-page.cur { display: block; animation: fade .2s; }
+.setup-page h1 { font: 600 28px/36px var(--font-d); margin: 0 0 8px; }
+.setup-page h1 .tag { vertical-align: middle; }
+.setup-page > p { max-width: 720px; }
+.setup-qr-row { display: flex; gap: 28px; align-items: flex-start; margin-top: 20px; flex-wrap: wrap; }
+.setup-side { flex: 1; min-width: 280px; max-width: 460px; display: flex; flex-direction: column; gap: 12px; }
+.setup-note { display: flex; gap: 12px; padding: 14px 16px; }
+.setup-note > .ic { font-size: 20px; color: var(--acc); }
+.setup-note p { margin: 4px 0 0; }
+.ok-line { display: flex; align-items: center; gap: 8px; color: var(--ok); font-weight: 600; margin: 6px 0; }
+.setup-foot { display: flex; gap: 8px; padding: 16px 48px; border-top: 1px solid var(--stroke); }
+.check-row .row-ic.ok { color: var(--ok); }
+.check-row .row-ic.no { color: var(--warn); }
+.tips li { margin: 8px 0; }
+.tag.req { background: color-mix(in srgb, var(--acc) 22%, transparent); }
+
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--flyout); border: 1px solid var(--stroke);
   padding: 10px 16px; border-radius: var(--r); z-index: 80; box-shadow: var(--shadow); animation: fly .15s ease-out; }
