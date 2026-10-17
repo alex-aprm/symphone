@@ -5,6 +5,7 @@ runs the shared LAN discovery and exposes the *active* phone (the one the UI sho
 the other subsystems hold on to, so switching phones needs no rewiring.
 """
 import asyncio
+import os
 import hashlib
 import hmac
 import json
@@ -209,7 +210,8 @@ class Phone:
     async def _tick(self):
         usb_ok = self.adbm.forward_ok and self.adbm.usb_dev == self.dev_id
         self.usb.base = f"http://127.0.0.1:{USB_FWD_PORT}" if usb_ok else None
-        ip = self.dev.get("last_ip")
+        # testing: an emulator behind its own NAT is reached through forwarded ports on this PC
+        ip = os.environ.get("SYMPHONE_TEST_PHONE_IP") or self.dev.get("last_ip")
         self.wifi.base = f"http://{ip}:{PHONE_PORT}" if ip else None
         wip = self.wfd_ip or self.info.get("wfdIp") or ""
         self.wfd.base = f"http://{wip}:{PHONE_PORT}" if wip else None

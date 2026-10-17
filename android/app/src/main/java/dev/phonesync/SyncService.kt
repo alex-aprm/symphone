@@ -33,6 +33,10 @@ class SyncService : Service() {
             .setContentText("Reachable from your PC")
             .setContentIntent(open)
             .setOngoing(true)
+            // Android only lets apps read the clipboard in the foreground: one tap sends it to the PC
+            .addAction(Notification.Action.Builder(null, "Send clipboard to PC",
+                PendingIntent.getActivity(this, 2, Intent(this, ClipSendActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)).build())
             .build()
         startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
 
@@ -44,6 +48,7 @@ class SyncService : Service() {
         }
 
         try { server.start() } catch (e: Exception) { Log.e("Symphone", "server: $e") }
+        try { StreamServer.start() } catch (e: Exception) { Log.e("Symphone", "streams: $e") }
         try { Discovery.start() } catch (e: Exception) { Log.e("Symphone", "discovery: $e") }
         Media.watch()
         Shares.restore()

@@ -108,48 +108,71 @@ Everything below works with permissions the user grants in the phone's Settings 
 them). With adb available the PC keeps using it (it adds app windows on hidden displays while the phone is locked).
 
 ### Capabilities
-`GET /api/caps` → `{accessibility: bool, cast: bool, camera: bool, writeSettings: bool, dnd: bool, overlay: bool}` —
-what the phone can do without adb right now (`accessibility` = the Symphone control service is enabled).
+`GET /api/caps` → `{accessibility, cast, camera, mic, writeSettings, dnd, overlay: bool, streamPort: 47904}` —
+what the phone can do without adb right now (`accessibility` = the Symphone control service is running; `overlay`
+= "Display over other apps", which lets the phone start camera/mic streams and casting consent from the background).
 
 ### Media stream — TCP port 47904
 One connection per stream. The PC sends one JSON line:
 `{"token": "...", "kind": "screen"|"camera"|"audio", "max_size": 1920, "fps": 60, "bitrate": 8000000,
   "camera": "<id>"|"", "facing": "back"|"front", "audio": "playback"|"mic"}`
-The phone answers one JSON line: `{"ok": true, "width": W, "height": H, "codec": "h264"|"pcm"}` or
-`{"ok": false, "error": "...", "needs": "consent"|"accessibility"|"permission"}`.
-`kind: screen` asks for Android's screen-casting consent on the phone (each session on Android 14+).
+The phone answers one JSON line: `{"ok": true, "width": W, "height": H, "codec": "h264"|"pcm", "device": "<model>"}`
+(screen also has `"control": bool`, whether input will work) or `{"ok": false, "error": "...", "needs":
+"consent"|"permission"}` (`needs` absent for a bad token or other errors). The screen is never refused for a
+missing accessibility service; it is just view-only.
+- `kind: screen` asks for Android's screen-casting consent on the phone (every session on Android 14+; the answer
+  can take up to 60 s). `needs: "permission"` when the consent can't be shown (app in the background without
+  "Display over other apps").
+- `kind: camera` needs the Camera permission; 16:9 size ≤ `max_size`, 30 fps. `kind: audio` needs the Microphone
+  permission; `audio: "playback"` (other apps' sound; apps can opt out, calls are never captured) also asks for
+  casting consent like `screen`.
 
 Then phone → PC, repeated: `u8 type` +
-- `0x01` video: `u8 flags (1 config, 2 keyframe) | u64 BE pts µs | u32 BE length | Annex B payload`
-- `0x02` audio: `u64 BE pts µs | u32 BE length | PCM s16le 48 kHz stereo`
-- `0x10` event: `u32 BE length | UTF-8 JSON` — `{"type":"size","width","height"}`, `{"type":"ended","reason"}`
+- `0x01` video: `u8 flags (1 config, 2 keyframe) | u64 BE pts µs | u32 BE length | Annex B payload` — the first
+  packet is the SPS/PPS config on its own (as with scrcpy)
+- `0x02` audio: `u64 BE pts µs | u32 BE length | PCM s16le 48 kHz stereo` (20 ms chunks)
+- `0x10` event: `u32 BE length | UTF-8 JSON` — `{"type":"size","width","height"}` (rotation; a new config and
+  keyframe follow), `{"type":"ended","reason"}` (always sent last when the phone ends the stream: casting stopped
+  from the phone, camera taken by another app, …)
 
 PC → phone on the same socket: newline-delimited JSON input (screen streams; needs the accessibility service):
-`{"t":"touch","a":0|1|2,"id":n,"x":0..1,"y":0..1}` (MotionEvent down/up/move, normalized),
+`{"t":"touch","a":0|1|2,"id":n,"x":0..1,"y":0..1}` (MotionEvent down/up/move, normalized to the phone's display;
+several ids = multi-finger gesture),
 `{"t":"scroll","x","y","h","v"}` (wheel notches),
-`{"t":"key","code":<Android KeyEvent keycode>,"a":0|1 (down/up),"meta","repeat"}` — BACK/HOME/APP_SWITCH/volume map to
-global actions; editing keys (DEL, FORWARD_DEL, ENTER, arrows, MOVE_HOME/END, Ctrl+A/C/X/V) act on the focused field,
+`{"t":"key","code":<Android KeyEvent keycode>,"a":0|1 (down/up),"meta","repeat"}` — acted on at key down (up is
+ignored); BACK/ESCAPE, HOME, APP_SWITCH, NOTIFICATION, POWER (locks) and volume keys map to global actions; editing
+keys (DEL, FORWARD_DEL, ENTER, TAB, arrows with Shift, MOVE_HOME/END, SPACE, Ctrl+A/C/X/V) act on the focused field,
 `{"t":"text","s":"…"}` (inserted at the cursor of the focused field), `{"t":"global","action":"notifications"|"quick_settings"|"back"|"home"|"recents"|"lock"}`,
-`{"t":"launch","pkg":"…"}` (opens an app on the phone's screen), `{"t":"rotate"}`, `{"t":"torch","on"}`,
-`{"t":"zoom","in"}` (camera), `{"t":"reset"}` (new keyframe).
+`{"t":"launch","pkg":"…"}` (opens an app on the phone's screen), `{"t":"torch","on"}`, `{"t":"zoom","in"}` (camera),
+`{"t":"reset"}` (new keyframe). `{"t":"rotate"}` is accepted and ignored (apps can't rotate the screen).
 
 ### Control without adb
-- `POST /api/input {…}` — the same input messages outside a stream (typing into the focused field, global keys).
+- `POST /api/input {…}` — the same input messages outside a stream → `{ok}` or `{ok:false, needs:"accessibility"}`.
 - `POST /api/lock` — locks the phone (accessibility).
-- `POST /api/unlock {nonce, ct}` — PIN encrypted with AES-256-GCM, key = SHA-256(token), plaintext `{"pin":"…"}`;
-  the phone wakes the screen and taps the keyguard's digit buttons once (never retries).
-- `GET /api/controls` / `POST /api/controls {id, value}` — quick settings: `brightness`, `autoBrightness`,
-  `autoRotate` (Modify system settings), `dnd` (Do Not Disturb access), volumes, `torch`; `wifi`, `bluetooth`,
-  `data`, `airplane`, `location`, `nfc` are read-only for apps since Android 10 — setting them opens the phone's
-  settings panel and returns `{"opened": true}`.
-- Clipboard phone → PC: Quick Settings tile *Send clipboard* and the share sheet (Android blocks background reads).
+- `POST /api/unlock {nonce, ct}` — PIN encrypted with AES-256-GCM, key = SHA-256(token), nonce 12 bytes, both hex
+  (`ct` includes the tag), plaintext `{"pin":"…"}` (digits only). The phone wakes the screen, opens the PIN pad
+  (clicks the lock icon, else swipes up — Pixels ignore synthetic swipes on the lock screen), taps the digits and
+  Enter once and never retries → `{ok:true, message:"unlocked"|"already unlocked"}` or `{ok:false, error}`
+  (e.g. keypad not found, still locked). If the keypad closes mid-PIN it stops before Enter. Pattern and
+  alphanumeric passwords are not supported.
+- `GET /api/controls` → `{toggles: {<id>: {label, on, settable}}, brightness: 0..255, volumes: {media|ring|alarm|call:
+  {value, min, max}}, torch: bool, adb: false}` — toggle ids `wifi`, `bluetooth`, `data`, `airplane`, `dnd`,
+  `location`, `rotate`, `saver`, `dark`, `nfc`, `autobright`; `settable` = switched right on the phone.
+- `POST /api/controls` with one of `{toggle: <id>|"torch", on}`, `{brightness: 1..255}`, `{volume: <stream>, value}`
+  → `{ok}`. `rotate`, `autobright` and `brightness` need "Change system settings", `dnd` needs "Do Not Disturb
+  access" (`{ok:false, needs:"write_settings"|"dnd", error}` otherwise). Apps can't switch the others since Android
+  10: the phone opens its own panel and returns `{ok:true, opened:true}`.
+- Clipboard phone → PC: Quick Settings tile *Send clipboard to PC* and the same action on the app's notification
+  (Android blocks background clipboard reads); sent as the usual `clip` event to the main PC.
 
 ## Phone app 2.6: setup checklist
 
 - `GET /api/setup` (X-Token) → `{items: [{id, title, why, ok, required, hint}], done, requiredOk, installer}` — the
   phone's first-run checklist, live. `ok` is `true` / `false`, or `null` when Android can't tell (vendor
   auto-launch switches). Item ids: `paired`, `notifications` (13+), `notif_access`, `all_files`, `battery`,
-  `overlay`, `camera`, `calls`, `nearby` (12+ with BLE), `autostart` (known vendors only), `wireless_debugging`.
+  `control` (accessibility service, 2.7), `overlay`, `camera`, `mic` (2.7), `write_settings` (2.7), `dnd` (2.7),
+  `calls`, `nearby` (12+ with BLE), `autostart` (known vendors only), `wireless_debugging` (optional extra since
+  2.7: only for app windows while the phone is locked).
   Required: `paired`, `notif_access`, `all_files`, `battery`. `hint` carries the steps when Android needs manual
   action (e.g. "Allow restricted settings" for notification access on apps installed from an APK file, Android
   13+). `installer` is the installing package (`com.android.vending`, a package installer for an APK file, or null

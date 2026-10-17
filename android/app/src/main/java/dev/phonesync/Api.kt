@@ -137,12 +137,54 @@ object Api {
                 if (req.method == "POST") Torch.set(JSONObject(req.bodyText()).optBoolean("on"))
                 resp.json(JSONObject().put("on", Torch.on))
             }
+            // ---- debug-free control (accessibility service, special permissions)
+            "caps" -> resp.json(caps())
+            "input" -> {
+                val b = try { JSONObject(req.bodyText()) } catch (_: Exception) { JSONObject() }
+                if (ControlService.instance == null) return resp.json(JSONObject().put("ok", false).put("needs", "accessibility"))
+                resp.json(JSONObject().put("ok", ControlService.input(b)))
+            }
+            "lock" -> {
+                val s = ControlService.instance ?: return resp.json(JSONObject().put("ok", false).put("needs", "accessibility")
+                    .put("error", "Turn on Symphone in the phone's Accessibility settings"))
+                resp.json(JSONObject().put("ok", s.global("lock")))
+            }
+            "unlock" -> resp.json(unlock(me, req))
+            "controls" -> resp.json(if (req.method == "POST") Controls.write(JSONObject(req.bodyText())) else Controls.read())
             "upload" -> upload(req, resp)
             "chunk" -> chunk(req, resp)
             "commit" -> commit(req, resp)
             else -> resp.text(404, "unknown api")
         }
     }
+
+    fun caps(): JSONObject = JSONObject()
+        .put("accessibility", ControlService.instance != null)
+        .put("cast", android.os.Build.VERSION.SDK_INT >= 29)
+        .put("camera", Hub.ctx.checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+        .put("mic", Hub.ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+        .put("writeSettings", android.provider.Settings.System.canWrite(Hub.ctx))
+        .put("dnd", Hub.ctx.getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted)
+        .put("overlay", android.provider.Settings.canDrawOverlays(Hub.ctx))
+        .put("streamPort", StreamServer.PORT)
+
+    /** PIN from the PC, AES-256-GCM with key SHA-256(token): typed into the keyguard once, never retried. */
+    private fun unlock(me: Pc, req: Request): JSONObject {
+        val s = ControlService.instance ?: return JSONObject().put("ok", false).put("needs", "accessibility")
+            .put("error", "Turn on Symphone in the phone's Accessibility settings")
+        val b = try { JSONObject(req.bodyText()) } catch (_: Exception) { JSONObject() }
+        val pin = try {
+            val key = java.security.MessageDigest.getInstance("SHA-256").digest(me.token.toByteArray(Charsets.UTF_8))
+            val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(javax.crypto.Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec(key, "AES"),
+                javax.crypto.spec.GCMParameterSpec(128, hex(b.optString("nonce"))))
+            JSONObject(String(c.doFinal(hex(b.optString("ct"))), Charsets.UTF_8)).optString("pin")
+        } catch (e: Exception) { return JSONObject().put("ok", false).put("error", "bad request") }
+        if (pin.isEmpty() || !pin.all { it.isDigit() }) return JSONObject().put("ok", false).put("error", "only numeric PINs can be typed")
+        return s.unlock(pin)
+    }
+
+    private fun hex(h: String): ByteArray = ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
 
     /** Optional "display" (int >= 0) of /api/notif/act and /api/launch. */
     private fun displayParam(b: JSONObject): Int? =

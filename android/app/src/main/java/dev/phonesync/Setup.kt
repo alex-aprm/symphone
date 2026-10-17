@@ -45,10 +45,21 @@ object Setup {
             true, Environment.isExternalStorageManager())
         out += Item("battery", "Run in the background", "Keeps the connection to your PC alive (unrestricted battery)",
             true, ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName))
+        val acc = ControlService.enabled(ctx)
+        val accR = Build.VERSION.SDK_INT >= 33 && !acc && prefs.getBoolean("accTried", false)
+        out += Item("control", "Control from the PC", "Touch, keys and typing from the PC, lock and unlock — without USB debugging",
+            false, acc, if (accR) RESTRICTED_STEPS_ACC else "Settings opens Accessibility: tap Symphone control and turn it on.",
+            action = if (accR && prefs.getString("accLast", "settings") == "settings") "Open App info" else "Allow")
         out += Item("overlay", "Open apps from the PC", "Lets the PC open apps and notifications on the phone (display over other apps)",
             false, Settings.canDrawOverlays(ctx), "Android opens the full list: find Symphone in it and turn it on.")
         out += Item("camera", "Camera", "Use the phone as a webcam and take photos from the PC",
             false, granted(ctx, Manifest.permission.CAMERA), deniedHint(ctx, "camera"))
+        out += Item("mic", "Microphone", "The phone as a microphone for the PC, and phone sound on the PC",
+            false, granted(ctx, Manifest.permission.RECORD_AUDIO), deniedHint(ctx, "mic"))
+        out += Item("write_settings", "Change system settings", "Brightness and auto-rotate from the PC's quick settings",
+            false, Settings.System.canWrite(ctx))
+        out += Item("dnd", "Do Not Disturb access", "Turn Do not disturb on and off from the PC",
+            false, ctx.getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted)
         out += Item("calls", "Calls", "Answer and decline calls from the PC",
             false, CALLS.all { granted(ctx, it) }, deniedHint(ctx, "calls"))
         if (Build.VERSION.SDK_INT >= 31 && Ble.supported)
@@ -57,7 +68,7 @@ object Setup {
         vendorHint()?.let { out += Item("autostart", "Allow auto-launch", "Your phone's maker can stop apps in the background",
             false, null, it, action = "Open settings") }
         val wd = wirelessDebugging(ctx)
-        out += Item("wireless_debugging", "Wireless debugging", "For phone apps in PC windows, the phone screen, the PC keyboard and the clipboard from the phone",
+        out += Item("wireless_debugging", "Extra: app windows while locked", "Optional — Android's wireless debugging lets the PC open phone apps in their own windows while the phone stays locked (and play call audio on the PC)",
             false, wd, if (wd) null else WIRELESS_DEBUGGING_STEPS, action = if (devOptions(ctx)) "Developer options" else "About phone")
         return out
     }
@@ -83,6 +94,17 @@ object Setup {
             "paired" -> a.startActivity(Intent(a, ScanActivity::class.java))
             "notifications" -> runtime(a, id, arrayOf(Manifest.permission.POST_NOTIFICATIONS))
             "camera" -> runtime(a, id, arrayOf(Manifest.permission.CAMERA))
+            "mic" -> runtime(a, id, arrayOf(Manifest.permission.RECORD_AUDIO))
+            "write_settings" -> open(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$pkg")))
+            "dnd" -> open(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+            "control" -> {
+                val accR = Build.VERSION.SDK_INT >= 33 && !ControlService.enabled(a) && prefs.getBoolean("accTried", false)
+                if (accR && prefs.getString("accLast", "settings") == "settings") {
+                    prefs.edit().putString("accLast", "appinfo").apply(); appInfo(); return
+                }
+                prefs.edit().putBoolean("accTried", true).putString("accLast", "settings").apply()
+                open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
             "calls" -> runtime(a, id, CALLS)
             "nearby" -> if (Build.VERSION.SDK_INT >= 31)
                 runtime(a, id, arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT))
@@ -124,6 +146,7 @@ object Setup {
         val perms = when (id) {
             "notifications" -> if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else return null
             "camera" -> arrayOf(Manifest.permission.CAMERA)
+            "mic" -> arrayOf(Manifest.permission.RECORD_AUDIO)
             "calls" -> CALLS
             "nearby" -> if (Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_CONNECT) else return null
             else -> return null
@@ -165,6 +188,9 @@ object Setup {
 
     private const val RESTRICTED_STEPS = "Android blocks this for apps installed from a file until you allow it: " +
         "open App info › ⋮ (top right) › Allow restricted settings, confirm, then come back and tap Allow again."
+
+    private const val RESTRICTED_STEPS_ACC = "Android blocks this for apps installed from a file until you allow it: " +
+        "open App info › ⋮ (top right) › Allow restricted settings, confirm, then come back, tap Allow and turn on Symphone control."
 
     private const val WIRELESS_DEBUGGING_STEPS = "Optional. Settings › About phone › tap Build number 7 times to unlock " +
         "Developer options. Then Developer options › Wireless debugging › On › Pair device with QR code, and scan the " +

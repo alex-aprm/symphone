@@ -15,6 +15,21 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         Hub.init(this)
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStarted(a: android.app.Activity) { started++ }
+            override fun onActivityStopped(a: android.app.Activity) { started-- }
+            override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
+            override fun onActivityResumed(a: android.app.Activity) {}
+            override fun onActivityPaused(a: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+            override fun onActivityDestroyed(a: android.app.Activity) {}
+        })
+    }
+
+    companion object {
+        @Volatile private var started = 0
+        /** An activity of ours is visible (foreground services that use camera/mic may start). */
+        val foreground: Boolean get() = started > 0
     }
 }
 
@@ -134,6 +149,17 @@ object Hub {
     @Volatile var lastClipFromPc: String? = null
     @Volatile private var lastClipSent: String? = null
     @Volatile private var lastClipSentAt = 0L
+
+    /** The user asked to send the clipboard (tile / notification): always sent; false if no PC is listening. */
+    fun sendClip(text: String): Boolean {
+        lastClipSent = text; lastClipSentAt = System.currentTimeMillis()
+        val data = JSONObject().put("text", text).put("source", "tile")
+        val m = Pcs.master?.id
+        if (m != null && emitTo(m, "clip", data)) return true
+        if (subscribers.isEmpty()) return false
+        emitAll("clip", data)
+        return true
+    }
 
     /** Phone clipboard changed (app listener or shell helper): tell the master PC, unless it came from a PC. */
     fun phoneClipChanged(text: String?, source: String): Boolean {

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="control_description">Lets your paired PC control this phone without USB debugging: touches and keys from the PC window showing your screen, typing with the PC keyboard, locking, and typing your PIN into the lock screen when you ask the PC to unlock. It acts only on requests from a PC you paired with Symphone.</string>
+</resources>
