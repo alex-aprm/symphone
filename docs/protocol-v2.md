@@ -146,6 +146,14 @@ keys (DEL, FORWARD_DEL, ENTER, TAB, arrows with Shift, MOVE_HOME/END, SPACE, Ctr
 `{"t":"launch","pkg":"…"}` (opens an app on the phone's screen), `{"t":"torch","on"}`, `{"t":"zoom","in"}` (camera),
 `{"t":"reset"}` (new keyframe). `{"t":"rotate"}` is accepted and ignored (apps can't rotate the screen).
 
+The phone keeps its send buffer small (~160 KB): when Wi-Fi stalls, the encoder skips frames rather than the kernel
+queueing stale video.
+
+### Streaming over Wi-Fi
+- `POST /api/stream {ttl}` (seconds, ≤ 120; `0` ends it) → `{ok}` — while the PC streams video over Wi-Fi (casting, or
+  scrcpy over wireless debugging) it renews this every 20 s with `ttl: 45`; the phone holds a high-performance Wi-Fi
+  lock (no power save, which otherwise delivers frames in bursts) until the lease lapses.
+
 ### Control without adb
 - `POST /api/input {…}` — the same input messages outside a stream → `{ok}` or `{ok:false, needs:"accessibility"}`.
 - `POST /api/lock` — locks the phone (accessibility).

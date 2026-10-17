@@ -87,6 +87,11 @@ object Api {
                 main.post { Hub.ctx.startActivity(i) }
                 resp.json(JSONObject().put("ok", true))
             }
+            "stream" -> {      // {ttl: s} while the PC streams video over Wi-Fi, renewed; 0 ends it
+                val ttl = try { JSONObject(req.bodyText()).optInt("ttl", 30) } catch (_: Exception) { 30 }
+                WifiPerf.lease(ttl.coerceIn(0, 120))
+                resp.json(JSONObject().put("ok", true))
+            }
             "shares" -> resp.json(JSONObject().put("items", Shares.list(me)))
             "share" -> share(req, resp, seg.getOrNull(1) ?: "")
             "audio" -> AudioSink.play(req, resp)

@@ -124,6 +124,9 @@ DEFAULTS = {
     "mirror_max_size": 0,
     "mirror_bitrate": "16M",
     "mirror_fps": 120,
+    # Wi-Fi (wireless debugging, casting): less data per frame and fewer frames ride out the link's hiccups
+    "mirror_wifi_bitrate": "8M",
+    "mirror_wifi_fps": 60,
     "turn_screen_off": False,
     "autostart": True,
     "local_secret": "",

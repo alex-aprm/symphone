@@ -15,16 +15,20 @@ const POINTER_GENERIC_FINGER = -2;
 // Virtual displays: the viewer asks for its picture area in CSS px; the server turns that into display pixels at the
 // phone's own density (apps that size themselves from the phone's screen metrics break on other densities).
 const MAX_DECODE_QUEUE = 8;            // frames; ~130 ms at 60 fps
+const BACKLOG_RESYNC_MS = 500;         // ...for this long before resyncing: a burst from Wi-Fi decodes in a few ms
+// Playout delay cap (ms) for smoothing network jitter; ?jitter=0 draws every frame as soon as it is decoded
+const JITTER_MAX = Math.max(0, +(P.get('jitter') ?? 60) || 0);
+const MAX_HELD = 4;                    // decoded frames waiting for their display time (decoders have few buffers)
 const A_DOWN = 0, A_UP = 1, A_MOVE = 2;
 
 let ws = null, decoder = null, codecStr = '', lastConfig = null, pendingConfig = null, needKey = true;
-let configuredAt = 0;
+let configuredAt = 0, backlogSince = 0;
 let vw = 0, vh = 0, meta = {}, gotFrame = false, closedByError = false, resetAsked = 0;
 let fit = { x: 0, y: 0, w: 0, h: 0 };
 const vz = { z: 1, tx: 0, ty: 0 };              // local view zoom (magnifier)
 let magnifier = false;
 const recvTimes = new Map();                    // pts -> PC receive time (ms) for latency stats
-const st = { frames: 0, bytes: 0, lat: [], dropped: 0, decErr: 0, resets: 0 };
+const st = { frames: 0, bytes: 0, lat: [], dropped: 0, decErr: 0, resets: 0, skipped: 0 };
 
 // ------------------------------------------------------------------ status / toasts
 function setStatus(text, error = false, retry = false) {
@@ -117,6 +121,7 @@ function codecFromConfig(data) {
 function closeDecoder() {
   if (decoder && decoder.state !== 'closed') { try { decoder.close(); } catch { } }
   decoder = null;
+  dropHeld();
 }
 
 function makeDecoder(codec) {
@@ -129,7 +134,8 @@ function makeDecoder(codec) {
       decoder = null; needKey = true; requestKeyframe();
     },
   });
-  configuredAt = performance.now();
+  configuredAt = performance.now(); backlogSince = 0;
+  pacer.reset();                                     // a new encoder session may restart its timestamps
   decoder.configure({ codec, optimizeForLatency: true, hardwareAcceleration: P.get('hw') || 'no-preference' });
   needKey = true;
 }
@@ -159,11 +165,17 @@ function onPacket(buf) {
   }
   if (!decoder || decoder.state !== 'configured') { if (lastConfig) { makeDecoder(codecStr); pendingConfig = lastConfig; } else return; }
   const key = !!(flags & 2);
-  // Latency guard: if the decoder falls behind, throw the backlog away and resume on a fresh keyframe.
+  // Latency guard: if the decoder itself can't keep up, throw the backlog away and resume on a fresh keyframe.
   // Keep the (warmed-up) decoder: stop feeding deltas, let it drain, and resume on a keyframe requested now.
-  if (!key && !needKey && decoder.decodeQueueSize > MAX_DECODE_QUEUE && performance.now() - configuredAt > 2000) {
-    st.resets++; needKey = true; requestKeyframe(true);
-  }
+  // A short burst (Wi-Fi delivering a stall's worth of frames at once) doesn't count: it decodes in a few ms and
+  // the late frames are skipped at presentation, without the freeze of waiting for a keyframe.
+  const now = performance.now();
+  if (!key && !needKey && decoder.decodeQueueSize > MAX_DECODE_QUEUE) {
+    if (!backlogSince) backlogSince = now;
+    else if (now - backlogSince > BACKLOG_RESYNC_MS && now - configuredAt > 2000) {
+      st.resets++; needKey = true; backlogSince = 0; requestKeyframe(true);
+    }
+  } else backlogSince = 0;
   if (needKey && !key) { st.dropped++; requestKeyframe(); return; }
   let payload = data;
   if (pendingConfig) {                               // Annex B without description: SPS/PPS go in-band
@@ -179,13 +191,72 @@ function onPacket(buf) {
   } catch (e) { console.warn(e); needKey = true; requestKeyframe(); }
 }
 
+// ------------------------------------------------------------------ presentation (frame pacing)
+// Wi-Fi delivers frames in bursts (airtime contention, power save, retransmissions). Drawing each frame the moment it
+// is decoded turns that into visible judder: a stall, then several frames in one refresh. Instead each frame is shown
+// at its phone timestamp plus a playout delay that follows the measured jitter (~0 over USB, a few tens of ms on a
+// busy Wi-Fi), one per display refresh; frames that are already late are skipped, so a stall never adds latency.
+const pacer = {
+  win: [],              // [t, offset] of recent frames, offset = PC time - phone timestamp (ms)
+  delay: 0,             // current playout delay (ms)
+  lastTune: 0,
+  reset() { this.win = []; this.delay = 0; this.lastTune = 0; },
+  // performance.now() time at which the frame with this timestamp (µs) should be on screen
+  due(pts, now) {
+    const off = now - pts / 1000, w = this.win;
+    w.push([now, off]);
+    while (now - w[0][0] > 3000) w.shift();
+    if (!JITTER_MAX) return now;
+    // the smallest offset is how long an undelayed frame takes (plus the clocks' difference)
+    let base = Infinity;
+    for (const e of w) if (e[1] < base) base = e[1];
+    if (now - this.lastTune > 250 && w.length >= 10) {
+      this.lastTune = now;
+      const j = w.map(e => e[1] - base).sort((a, b) => a - b);
+      const target = Math.min(JITTER_MAX, j[Math.floor(j.length * 0.95)]);
+      // grow at once (the next burst is likely), shrink slowly once the link has calmed down
+      this.delay = target > this.delay ? target : Math.max(target, this.delay - 2);
+    }
+    return pts / 1000 + base + this.delay;
+  },
+};
+let held = [], presentRaf = 0;
+
+function dropHeld() {
+  for (const h of held) h.frame.close();
+  held = [];
+}
+
 function onFrame(frame) {
+  const t = recvTimes.get(frame.timestamp);
+  if (t) { st.lat.push(Date.now() - t); recvTimes.delete(frame.timestamp); }
+  const now = performance.now();
+  const due = pacer.due(frame.timestamp, now);
+  if (due <= now && !held.length) { draw(frame); return; }       // on time (USB, calm Wi-Fi): no added latency
+  held.push({ frame, due });
+  while (held.length > MAX_HELD) { held.shift().frame.close(); st.skipped++; }
+  if (!presentRaf) presentRaf = requestAnimationFrame(present);
+}
+
+function present() {
+  presentRaf = 0;
+  const now = performance.now() + 4;                 // a frame due within ~half a refresh goes into this one
+  let pick = -1;
+  for (let i = 0; i < held.length; i++) if (held[i].due <= now) pick = i;
+  if (pick >= 0) {
+    for (let i = 0; i < pick; i++) { held[i].frame.close(); st.skipped++; }   // the newest due frame wins
+    const f = held[pick].frame;
+    held.splice(0, pick + 1);
+    draw(f);
+  }
+  if (held.length) presentRaf = requestAnimationFrame(present);
+}
+
+function draw(frame) {
   const w = frame.displayWidth, h = frame.displayHeight;
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   if (vw !== w || vh !== h) setSize(w, h);
   ctx.drawImage(frame, 0, 0);
-  const t = recvTimes.get(frame.timestamp);
-  if (t) { st.lat.push(Date.now() - t); recvTimes.delete(frame.timestamp); }
   frame.close();
   st.frames++;
   if (!gotFrame) { gotFrame = true; retries = 0; setStatus(''); }
@@ -531,8 +602,9 @@ setInterval(() => {
   lastLine = `${vw}×${vh} ${codecStr || meta.codec || ''}  ${meta.display || ''}\n` +
     `${(st.frames / dt).toFixed(0)} fps  ${(st.bytes * 8 / dt / 1e6).toFixed(1)} Mbit/s\n` +
     `PC pipeline ${lat.toFixed(1)} ms (max ${maxLat.toFixed(0)})  queue ${decoder?.decodeQueueSize ?? '-'}\n` +
+    `smoothing ${pacer.delay.toFixed(0)} ms  skipped ${st.skipped}\n` +
     `dropped ${st.dropped}  resyncs ${st.resets}  decoder errors ${st.decErr}`;
-  window.__screen.last = { fps: st.frames / dt, mbps: st.bytes * 8 / dt / 1e6, lat, maxLat, vw, vh, gotFrame, dropped: st.dropped, resets: st.resets, q: decoder?.decodeQueueSize };
+  window.__screen.last = { fps: st.frames / dt, mbps: st.bytes * 8 / dt / 1e6, lat, maxLat, vw, vh, gotFrame, dropped: st.dropped, resets: st.resets, q: decoder?.decodeQueueSize, delay: pacer.delay, skipped: st.skipped };
   st.frames = 0; st.bytes = 0; st.lat = [];
   if (statsOn) $('#stats').textContent = lastLine;
 }, 1000);

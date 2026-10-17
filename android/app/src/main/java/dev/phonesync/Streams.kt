@@ -29,6 +29,7 @@ import android.media.MediaFormat
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -126,9 +127,15 @@ object StreamServer {
 
     /** Thread-safe writer for the binary packet stream. */
     class Out(private val s: Socket) {
+        init {
+            // A small send buffer: when Wi-Fi stalls, writes block and the encoder skips frames instead of the
+            // kernel queueing seconds of stale video that would then arrive late (~150 ms at 8 Mbit/s).
+            try { s.sendBufferSize = 160 * 1024 } catch (_: Exception) {}
+        }
         private val o = DataOutputStream(BufferedOutputStream(s.getOutputStream(), 1 shl 16))
         @Volatile var closed = false
         private var ended = false
+        private var frame = ByteArray(1 shl 16)      // reused: no garbage per frame
 
         @Synchronized fun line(j: JSONObject) { o.write((j.toString() + "\n").toByteArray()); o.flush() }
 
@@ -136,7 +143,8 @@ object StreamServer {
             if (closed) return
             try {
                 o.writeByte(0x01); o.writeByte((if (config) 1 else 0) or (if (key) 2 else 0)); o.writeLong(ptsUs); o.writeInt(len)
-                val a = ByteArray(len); buf.get(a); o.write(a); o.flush()
+                if (frame.size < len) frame = ByteArray(maxOf(len, frame.size * 2))
+                buf.get(frame, 0, len); o.write(frame, 0, len); o.flush()
             } catch (e: Exception) { closed = true; try { s.close() } catch (_: Exception) {} }
         }
 
@@ -165,6 +173,38 @@ object StreamServer {
         fun start(): JSONObject
         fun input(m: JSONObject)
         fun stop()
+    }
+}
+
+/**
+ * Wi-Fi without power save while the PC streams video over it (leased and renewed by the PC: POST /api/stream).
+ * The low-latency lock [SyncService] holds only works with the screen on and Symphone in the foreground; in power
+ * save the phone's radio dozes between beacons and frames reach the PC in bursts, 100 ms and more late.
+ */
+object WifiPerf {
+    private val h = Handler(Looper.getMainLooper())
+    private val expire = Runnable { set(false) }
+    private var lock: WifiManager.WifiLock? = null
+
+    @Synchronized fun lease(ttlSec: Int) {
+        h.removeCallbacks(expire)
+        set(ttlSec > 0)
+        if (ttlSec > 0) h.postDelayed(expire, ttlSec * 1000L)
+    }
+
+    @Synchronized private fun set(on: Boolean) {
+        if (on == (lock != null)) return
+        if (on) {
+            val wm = Hub.ctx.applicationContext.getSystemService(WifiManager::class.java)
+            @Suppress("DEPRECATION")
+            lock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "symphone-stream").apply {
+                setReferenceCounted(false); acquire()
+            }
+        } else {
+            try { lock?.release() } catch (_: Exception) {}
+            lock = null
+        }
+        Log.i("SymphoneStream", "wifi high-perf ${if (on) "on" else "off"}")
     }
 }
 

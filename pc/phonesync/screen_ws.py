@@ -117,13 +117,25 @@ async def _phone_state(serial: str) -> tuple[bool, bool]:
     return on, locked
 
 
+def wireless(serial: str | None) -> bool:
+    """adb over Wi-Fi: '192.168.1.5:5555' or an mDNS 'adb-XXXX._adb-tls-connect._tcp' transport."""
+    return bool(serial) and (":" in serial or "._adb-tls-connect" in serial)
+
+
+def stream_quality(wifi: bool) -> tuple[str, int]:
+    """(bitrate, fps) from the settings for the link the video takes."""
+    if wifi:
+        return settings["mirror_wifi_bitrate"] or "8M", min(int(settings["mirror_wifi_fps"] or 60), 120)
+    return settings["mirror_bitrate"] or "8M", min(int(settings["mirror_fps"] or 60), 120)
+
+
 async def session_options(serial: str, q) -> tuple[dict, str]:
     """Maps viewer query params to ScrcpySession kwargs. Returns (kwargs, display description)."""
     kind = q.get("kind", "screen")
     # 1920 default: full-res (2688p) H.264 decode can't sustain 60 fps in WebView2 on every PC
     max_size = int(q.get("max_size") or settings["mirror_max_size"] or 1920)
-    kw = dict(video_bit_rate=q.get("bitrate") or settings["mirror_bitrate"] or "8M",
-              max_fps=int(q.get("fps") or min(int(settings["mirror_fps"] or 60), 120)),
+    bitrate, fps = stream_quality(wireless(serial))
+    kw = dict(video_bit_rate=q.get("bitrate") or bitrate, max_fps=int(q.get("fps") or fps),
               max_size=max_size, power_on=False, stay_awake=False, audio=False, control=True,
               video_codec_options=q.get("codec_options") or DEFAULT_CODEC_OPTIONS or None)
     if kind == "camera":
@@ -179,8 +191,8 @@ async def cast_session(core, q):
         sess = CastSession(host, phone.token, "camera", max_size=max_size, fps=30, bitrate=16_000_000,
                            facing=q.get("facing", "back"))
         return sess, f"camera ({q.get('facing', 'back')})"
-    sess = CastSession(host, phone.token, "screen", max_size=max_size,
-                       fps=int(settings["mirror_fps"] or 60), bitrate=8_000_000)
+    bitrate, fps = stream_quality(True)
+    sess = CastSession(host, phone.token, "screen", max_size=max_size, fps=fps, bitrate=sc._bitrate(bitrate))
     if kind == "app" and q.get("pkg"):
         sess.start_app = q.get("pkg")
     return sess, "phone screen (casting)"
@@ -247,6 +259,9 @@ async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
                 kbd.sessions_changed()
         sess.on_content = on_content
         sessions.add(sess)                  # visible to ensure_app_display() as soon as its display exists
+        if getattr(sess, "cast", False) or wireless(serial):
+            sess.ps_wifi = True
+            wifi_streams(core, +1)
         await sess.start()
         await ws.send_str(json.dumps({"type": "meta", "codec": sess.codec, "width": sess.width,
                                       "height": sess.height, "device": sess.device_name,
@@ -298,12 +313,47 @@ async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
             watcher.cancel()
         if sess:
             sessions.discard(sess)
+            if getattr(sess, "ps_wifi", False):
+                wifi_streams(core, -1)
             await sess.stop()
             if kbd:
                 kbd.sessions_changed()
         if not ws.closed:
             await ws.close()
     return ws
+
+
+_wifi_count = 0
+_wifi_lease: asyncio.Task | None = None
+
+
+def wifi_streams(core, delta: int):
+    """Counts the streams riding on Wi-Fi; while there are any, the phone keeps its Wi-Fi out of power save (a lease
+    the phone drops by itself if the PC goes away)."""
+    global _wifi_count, _wifi_lease
+    _wifi_count = max(0, _wifi_count + delta)
+    if _wifi_count and not _wifi_lease:
+        _wifi_lease = asyncio.create_task(_lease_wifi(core))
+    elif not _wifi_count and _wifi_lease:
+        _wifi_lease.cancel()
+        _wifi_lease = None
+        asyncio.ensure_future(_post_lease(core, 0))
+
+
+async def _post_lease(core, ttl: int):
+    phone = core.hub.active
+    if phone is None or not phone.connected:
+        return
+    try:
+        await phone.post_json("/api/stream", {"ttl": ttl}, timeout=5)     # older phone apps: 404, harmless
+    except Exception as e:
+        log.debug("wifi lease: %s", e)
+
+
+async def _lease_wifi(core):
+    while True:
+        await _post_lease(core, 45)
+        await asyncio.sleep(20)
 
 
 _TASK_RE = re.compile(r"taskId=(\d+): ([\w.]+)/\S* .*?visible=(true|false)")

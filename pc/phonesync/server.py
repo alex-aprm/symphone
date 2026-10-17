@@ -290,6 +290,7 @@ def build_app(core) -> web.Application:
         b = await req.json()
         allowed = {"drive_letter", "drive_enabled", "auto_import", "import_dir", "downloads_dir", "unlock_on_mirror",
                    "toasts", "toast_muted_apps", "mirror_max_size", "mirror_bitrate", "mirror_fps",
+                   "mirror_wifi_bitrate", "mirror_wifi_fps",
                    "turn_screen_off", "autostart", "mirror_audio", "drive_mode", "display_name", "pc_name",
                    "clipboard_sync", "pc_keyboard", "transfer_toasts", "ble", "wifi_direct", "wfd_prefer", "sidecar_orientation", "sidecar_scale", "sidecar_size", "sidecar_size_auto"}
         upd = {k: v for k, v in b.items() if k in allowed}
