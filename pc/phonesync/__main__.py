@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import sys
 import threading
+import time
 import urllib.request
 
 from .config import UI_PORT, LOG_DIR, settings
@@ -18,6 +19,28 @@ def _post_running(path, body=None) -> bool:
         urllib.request.urlopen(req, timeout=2 if path == "/api/show" else 3600).read()
         return True
     except Exception:
+        return False
+
+
+_instance_lock = None
+
+
+def _single_instance() -> bool:
+    """True if this is the only running instance (held until exit). A second instance must never start its own core:
+    on Windows its 127.0.0.1 fallback bind succeeds next to the first one's 0.0.0.0 and silently takes the UI traffic."""
+    global _instance_lock
+    if sys.platform == "win32":
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateMutexW.restype = ctypes.c_void_p
+        _instance_lock = k32.CreateMutexW(None, False, "Local\\Symphone.instance")
+        return ctypes.get_last_error() != 183          # ERROR_ALREADY_EXISTS
+    import fcntl
+    _instance_lock = open(LOG_DIR / ".instance.lock", "w")
+    try:
+        fcntl.flock(_instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
         return False
 
 
@@ -56,6 +79,13 @@ def main():
             return
         # Not running: start normally, then send once connected
     elif _post_running("/api/show"):
+        return
+    if not _single_instance():
+        # Running but busy or still starting: keep asking it to show itself instead of starting a second core
+        for _ in range(20):
+            if _post_running("/api/show"):
+                break
+            time.sleep(1)
         return
 
     handler = logging.handlers.RotatingFileHandler(LOG_DIR / "phonesync.log", maxBytes=5 << 20, backupCount=3, encoding="utf-8")

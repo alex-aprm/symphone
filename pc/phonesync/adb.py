@@ -301,11 +301,14 @@ class AdbManager:
         return on, locked
 
     async def unlock(self, pin: str, is_locked) -> tuple[bool, str]:
-        """Wake, raise the bouncer, type the PIN once (never retries, to avoid lockouts)."""
+        """Wake, raise the bouncer, type the PIN once (never retries, to avoid lockouts).
+
+        Every key goes to display 0 (the phone's own screen): with app windows open, the focused display is one of
+        their virtual displays, and an untargeted `input text` would type the PIN into that app instead."""
         s = self.serial
         if not s:
             return False, "phone not connected over adb (USB or Wi-Fi debugging)"
-        await shell("input keyevent KEYCODE_WAKEUP", s)
+        await shell("input -d 0 keyevent KEYCODE_WAKEUP", s)
         await asyncio.sleep(0.25)
         if not await is_locked():
             return True, "already unlocked"
@@ -315,7 +318,7 @@ class AdbManager:
             return True, "unlocked (no PIN needed)"
         if not pin:
             return False, "set your PIN in Settings to unlock from the PC"
-        await shell(f"input text {pin} && input keyevent KEYCODE_ENTER", s)
+        await shell(f"input -d 0 text {pin} && input -d 0 keyevent KEYCODE_ENTER", s)
         for _ in range(10):
             await asyncio.sleep(0.25)
             if not await is_locked():
@@ -324,18 +327,18 @@ class AdbManager:
 
     async def lock(self):
         if self.serial:
-            await shell("input keyevent KEYCODE_SLEEP", self.serial)
+            await shell("input -d 0 keyevent KEYCODE_SLEEP", self.serial)
 
     async def key(self, code: str):
         if self.serial:
-            await shell(f"input keyevent {code}", self.serial)
+            await shell(f"input -d 0 keyevent {code}", self.serial)
 
     async def take_photo_native(self):
         """Opens the stock camera and fires the shutter via KEYCODE_CAMERA."""
         s = self.serial
         await shell("am start -a android.media.action.STILL_IMAGE_CAMERA", s)
         await asyncio.sleep(1.4)
-        await shell("input keyevent KEYCODE_CAMERA", s)
+        await shell("input -d 0 keyevent KEYCODE_CAMERA", s)
 
 
 def env_for_scrcpy() -> dict:
