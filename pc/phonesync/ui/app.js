@@ -142,6 +142,11 @@ function renderState(s) {
   const nb = s.nearby || {};
   $("#bleDetail").textContent = nb.ble === "scanning" ? "On — reconnects as soon as your phone is nearby" + (nb.near?.length ? " · phone nearby" : "")
     : nb.ble === "unavailable" ? `Unavailable: ${nb.bleError || "no Bluetooth LE"}` : "Reconnects as soon as your phone is nearby, even before it joins Wi‑Fi";
+  const bl = s.btlink || {};
+  $("#btUnlockDetail").textContent = bl.state === "connected" ? `Bluetooth link up — add “${s.pc?.name || "this PC"}” as a trusted device on the phone once (Set up on phone)`
+    : bl.state === "not-paired" ? "Pair the phone with this PC in Windows Bluetooth settings first"
+    : bl.state === "searching" ? "Looking for the phone over Bluetooth…"
+    : "Your phone won't ask for its PIN while it's near this PC (Android's Extend Unlock, over Bluetooth)";
   $("#wfdDetail").textContent = nb.wfd === "on" ? "Active — hosting a private Wi‑Fi Direct link for your phone"
     : nb.wfd === "unavailable" ? `Unavailable on this PC: ${nb.wfdError}` : "When the phone is nearby but on another network (or none), this PC hosts a private link for it";
   $("#linkDetail").textContent = d ? (d.links || []).map(l => `${l.name}: ${l.healthy ? l.rtt + " ms" : "—"}`).join(" · ")
@@ -403,6 +408,10 @@ $("#ctxMenu").addEventListener("click", e => {
 document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctxMenu")) $("#ctxMenu").hidden = true; }, true);
 window.addEventListener("blur", () => $("#ctxMenu").hidden = true);
 $("#selCopy").onclick = () => copyMedia([...media.sel]);
+$("#btTrust").onclick = async () => {
+  const r = await api("/api/phone/trust", {});
+  if (r.ok !== false) toast(`On the phone: Trusted devices › Add trusted device › ${state.pc?.name || "this PC"}`);
+};
 $("#selClear").onclick = () => { media.sel.clear(); updateSel(); renderGrid(); };
 $("#selDownload").onclick = async () => {
   const ids = [...media.sel]; media.sel.clear(); updateSel(); renderGrid();

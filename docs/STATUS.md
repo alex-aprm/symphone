@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.5** (Windows app; phone app 2.7.5, versionCode 14).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.0** (Windows app; phone app 2.8.0, versionCode 15).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,12 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.8.0
+
+| Request | Status | Notes |
+|---|---|---|
+| Unlock the phone with a nearby device | ☑️ | Android's own Extend Unlock (Smart Lock) with this PC as a *trusted device*: while the PC is connected over Bluetooth, the phone doesn't ask for its PIN. Android doesn't let apps add trusted devices, so the user adds the PC once on the phone (Settings › Connection › *Keep the phone unlocked near this PC* › *Set up on phone* opens that screen). Symphone keeps the Bluetooth link up: the PC holds an authenticated RFCOMM connection to the phone app (keep-alives, reconnects). Verified: link comes up by itself (paired PC ↔ nubia). The trusted-device step itself needs the user. |
 
 ## 2.7.5
 

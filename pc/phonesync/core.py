@@ -65,6 +65,8 @@ class Core:
             self.sidecar = NoSidecar()
         self.clip = ClipSync(self)
         self.nearby = Nearby(self)
+        from .btlink import BtLink
+        self.btlink = BtLink(self)
         self.notif_history: list[dict] = self._load_history()
         self.ui_queues: list[asyncio.Queue] = []
         self.call_active = False
@@ -85,7 +87,7 @@ class Core:
         await self.proxy.start()
         await self.hub.start()
         for coro in (self.adbm.loop(), self.drive.loop(), self._ticker(), self.camfeed.loop(), self.clip.loop(),
-                     self.nearby.loop(), self._audio_keeper()):
+                     self.nearby.loop(), self._audio_keeper(), self.btlink.loop()):
             asyncio.create_task(coro)
 
     async def _audio_keeper(self):
@@ -181,6 +183,7 @@ class Core:
             "vcam": self.camfeed.status(),
             "sidecar": self._safe_status(self.sidecar),
             "nearby": self.nearby.status(),
+            "btlink": self.btlink.status(),
             "pairing": bool(self.hub.pair_secret),
         }
 

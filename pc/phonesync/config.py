@@ -104,6 +104,7 @@ DEFAULTS = {
     "pc_keyboard": True,
     "transfer_toasts": True,
     "ble": True,
+    "bt_unlock": True,              # keep a Bluetooth link up so Extend Unlock keeps the phone unlocked
     "wifi_direct": True,
     "sidecar_orientation": "landscape",
     "sidecar_scale": 0,                 # (old: Windows scale %, 0 = automatic)
