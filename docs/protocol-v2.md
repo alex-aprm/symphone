@@ -101,3 +101,58 @@ GATT (phone = server):
   joined even while the LAN works, if it can stay on its own Wi‑Fi at the same time.
 - `/api/info` adds `wfdIp` (the phone's address on the PC's direct network, or "") and `staConcurrency`
   (local-only STA + STA concurrency: the phone can use the direct link without leaving its Wi‑Fi).
+
+## Debug-free mode (no USB / wireless debugging)
+
+Everything below works with permissions the user grants in the phone's Settings (the onboarding checklist asks for
+them). With adb available the PC keeps using it (it adds app windows on hidden displays while the phone is locked).
+
+### Capabilities
+`GET /api/caps` → `{accessibility: bool, cast: bool, camera: bool, writeSettings: bool, dnd: bool, overlay: bool}` —
+what the phone can do without adb right now (`accessibility` = the Symphone control service is enabled).
+
+### Media stream — TCP port 47904
+One connection per stream. The PC sends one JSON line:
+`{"token": "...", "kind": "screen"|"camera"|"audio", "max_size": 1920, "fps": 60, "bitrate": 8000000,
+  "camera": "<id>"|"", "facing": "back"|"front", "audio": "playback"|"mic"}`
+The phone answers one JSON line: `{"ok": true, "width": W, "height": H, "codec": "h264"|"pcm"}` or
+`{"ok": false, "error": "...", "needs": "consent"|"accessibility"|"permission"}`.
+`kind: screen` asks for Android's screen-casting consent on the phone (each session on Android 14+).
+
+Then phone → PC, repeated: `u8 type` +
+- `0x01` video: `u8 flags (1 config, 2 keyframe) | u64 BE pts µs | u32 BE length | Annex B payload`
+- `0x02` audio: `u64 BE pts µs | u32 BE length | PCM s16le 48 kHz stereo`
+- `0x10` event: `u32 BE length | UTF-8 JSON` — `{"type":"size","width","height"}`, `{"type":"ended","reason"}`
+
+PC → phone on the same socket: newline-delimited JSON input (screen streams; needs the accessibility service):
+`{"t":"touch","a":0|1|2,"id":n,"x":0..1,"y":0..1}` (MotionEvent down/up/move, normalized),
+`{"t":"scroll","x","y","h","v"}` (wheel notches),
+`{"t":"key","code":<Android KeyEvent keycode>,"a":0|1 (down/up),"meta","repeat"}` — BACK/HOME/APP_SWITCH/volume map to
+global actions; editing keys (DEL, FORWARD_DEL, ENTER, arrows, MOVE_HOME/END, Ctrl+A/C/X/V) act on the focused field,
+`{"t":"text","s":"…"}` (inserted at the cursor of the focused field), `{"t":"global","action":"notifications"|"quick_settings"|"back"|"home"|"recents"|"lock"}`,
+`{"t":"launch","pkg":"…"}` (opens an app on the phone's screen), `{"t":"rotate"}`, `{"t":"torch","on"}`,
+`{"t":"zoom","in"}` (camera), `{"t":"reset"}` (new keyframe).
+
+### Control without adb
+- `POST /api/input {…}` — the same input messages outside a stream (typing into the focused field, global keys).
+- `POST /api/lock` — locks the phone (accessibility).
+- `POST /api/unlock {nonce, ct}` — PIN encrypted with AES-256-GCM, key = SHA-256(token), plaintext `{"pin":"…"}`;
+  the phone wakes the screen and taps the keyguard's digit buttons once (never retries).
+- `GET /api/controls` / `POST /api/controls {id, value}` — quick settings: `brightness`, `autoBrightness`,
+  `autoRotate` (Modify system settings), `dnd` (Do Not Disturb access), volumes, `torch`; `wifi`, `bluetooth`,
+  `data`, `airplane`, `location`, `nfc` are read-only for apps since Android 10 — setting them opens the phone's
+  settings panel and returns `{"opened": true}`.
+- Clipboard phone → PC: Quick Settings tile *Send clipboard* and the share sheet (Android blocks background reads).
+
+## Phone app 2.6: setup checklist
+
+- `GET /api/setup` (X-Token) → `{items: [{id, title, why, ok, required, hint}], done, requiredOk, installer}` — the
+  phone's first-run checklist, live. `ok` is `true` / `false`, or `null` when Android can't tell (vendor
+  auto-launch switches). Item ids: `paired`, `notifications` (13+), `notif_access`, `all_files`, `battery`,
+  `overlay`, `camera`, `calls`, `nearby` (12+ with BLE), `autostart` (known vendors only), `wireless_debugging`.
+  Required: `paired`, `notif_access`, `all_files`, `battery`. `hint` carries the steps when Android needs manual
+  action (e.g. "Allow restricted settings" for notification access on apps installed from an APK file, Android
+  13+). `installer` is the installing package (`com.android.vending`, a package installer for an APK file, or null
+  for adb).
+- `phonesync://pair?...` links open the app from any QR scanner/camera (PairActivity, asks to confirm); after a
+  first pairing it continues to the checklist.

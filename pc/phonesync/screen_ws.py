@@ -167,6 +167,25 @@ async def session_options(serial: str, q) -> tuple[dict, str]:
     return kw, "virtual display (phone desktop)"
 
 
+async def cast_session(core, q):
+    from .castsession import CastSession, phone_host
+    phone = core.hub.active
+    host = phone_host(phone) if phone is not None and phone.connected else None
+    if not host:
+        raise sc.ScrcpyError("The phone isn't connected over Wi-Fi")
+    kind = q.get("kind", "screen")
+    max_size = int(q.get("max_size") or settings["mirror_max_size"] or 1920)
+    if kind == "camera":
+        sess = CastSession(host, phone.token, "camera", max_size=max_size, fps=30, bitrate=16_000_000,
+                           facing=q.get("facing", "back"))
+        return sess, f"camera ({q.get('facing', 'back')})"
+    sess = CastSession(host, phone.token, "screen", max_size=max_size,
+                       fps=int(settings["mirror_fps"] or 60), bitrate=8_000_000)
+    if kind == "app" and q.get("pkg"):
+        sess.start_app = q.get("pkg")
+    return sess, "phone screen (casting)"
+
+
 async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
     # Websockets bypass CORS: only accept pages served by this very server.
     origin = req.headers.get("Origin", "")
@@ -180,10 +199,14 @@ async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
     sender = None
     watcher = None
     try:
-        if not serial:
-            raise sc.ScrcpyError("phone not reachable over adb (USB or wireless debugging)")
-        kw, display = await session_options(serial, q)
-        sess = sc.ScrcpySession(serial, **kw)
+        if serial:
+            kw, display = await session_options(serial, q)
+            sess = sc.ScrcpySession(serial, **kw)
+        else:
+            # Debug-free: the phone app streams by itself (screen casting / its own camera); no hidden displays,
+            # so an app opens on the phone's own screen and the window shows that screen.
+            sess, display = await cast_session(core, q)
+            kw = {}
         queue: asyncio.Queue = asyncio.Queue()
         state = {"skip_until_key": False}
 
@@ -229,6 +252,8 @@ async def screen_socket(req: web.Request, core) -> web.WebSocketResponse:
                                       "height": sess.height, "device": sess.device_name,
                                       "kind": kind, "display": display,
                                       "flex": bool(sess.opts.get("flex_display"))}))
+        if getattr(sess, "cast", False) and sess.start_app:
+            await sess.start_app_cmd(sess.start_app)
         if sess.ps_kind == "app" and sess.virtual_display_id is not None:
             # Opened from the PC on purpose: if the app is already running on the phone's own screen, its task
             # comes here (otherwise Android just brings it up on the phone and this window shows nothing).

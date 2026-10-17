@@ -57,6 +57,12 @@
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- First-run setup: welcome, pairing, permissions checklist -->
+        <activity
+            android:name=".SetupActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <!-- In-app QR scanner for pairing with a PC -->
         <activity
             android:name=".ScanActivity"

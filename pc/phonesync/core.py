@@ -75,7 +75,7 @@ class Core:
         while True:
             try:
                 routes = settings["audio_routes"] or []
-                if routes and self.phone.connected and self.adbm.serial:
+                if routes and self.phone.connected:
                     running = self.mirror.running()
                     for what in routes:
                         if what in ("system", "mic"):
@@ -276,14 +276,43 @@ class Core:
             return (await self.adbm.screen_state())[1]
 
     async def unlock(self) -> dict:
-        ok, msg = await self.adbm.unlock(settings.get_pin(), self.is_locked)
+        if not self.adbm.serial:
+            ok, msg = await self._unlock_app()
+        else:
+            ok, msg = await self.adbm.unlock(settings.get_pin(), self.is_locked)
         if not ok:
             log.info("unlock: %s", msg)
         await self.phone.refresh_info()
         self.ui_event("state", self.state())
         return {"ok": ok, "message": msg}
 
+    async def _unlock_app(self) -> tuple[bool, str]:
+        """Debug-free unlock: the phone app's accessibility service taps the PIN in (once). The PIN travels
+        encrypted with a key only this PC and the phone know (from the pairing token)."""
+        pin = settings.get_pin()
+        if not pin:
+            return False, "no PIN saved (Settings › Phone PIN)"
+        import hashlib, json, os
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        key = hashlib.sha256(self.phone.token.encode()).digest()
+        nonce = os.urandom(12)
+        ct = AESGCM(key).encrypt(nonce, json.dumps({"pin": pin}).encode(), None)
+        try:
+            r = await self.phone.post_json("/api/unlock", {"nonce": nonce.hex(), "ct": ct.hex()}, timeout=15)
+        except Exception as e:
+            return False, f"phone not reachable: {e}"
+        return bool(r.get("ok")), r.get("error") or r.get("message") or ""
+
     async def lock(self) -> dict:
+        if not self.adbm.serial:
+            try:
+                await self.phone.post_json("/api/lock", {}, timeout=5)
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+            await asyncio.sleep(0.4)
+            await self.phone.refresh_info()
+            self.ui_event("state", self.state())
+            return {"ok": True}
         await self.adbm.lock()
         await asyncio.sleep(0.4)
         await self.phone.refresh_info()
@@ -342,6 +371,12 @@ class Core:
         if phone is not self.hub.active:
             self.switch_device(phone.dev_id)
             await asyncio.sleep(0.3)
+        if not self.adbm.serial:
+            # Debug-free: no hidden displays; the notification opens on the phone, shown in the phone-screen window
+            await screen_ws.open_window("screen", mode="main")
+            if key in phone.notifications:
+                return await phone.post_json("/api/notif/act", {"key": key, "op": op, "index": index, "text": text})
+            return await phone.post_json("/api/launch", {"pkg": n["pkg"]})
         disp = await screen_ws.ensure_app_display(n["pkg"], n.get("app") or n["pkg"])
         body = {"key": key, "op": op, "index": index, "text": text}
         if disp is not None:

@@ -77,6 +77,10 @@ function renderState(s) {
   $("#devModel").textContent = d ? (d.model || "Android phone") : "Add a phone to get started";
   $("#devChev").hidden = !s.paired;
   setPhonePicture(s.active || "");
+  // without wireless debugging apps open on the phone's own screen, shown in a casting window
+  const adbOk = !!(s.adb && (s.adb.usb || s.adb.wifi));
+  $("#appsHint").textContent = adbOk ? "Opens in its own window — works while the phone is locked · Shift+click: on the phone's screen"
+    : "Opens on the phone and shows its screen here (the phone asks to allow screen casting) · own windows while locked: Settings › Setup assistant › App windows";
   // battery
   const b = $("#battery");
   b.hidden = !(d && d.battery != null && d.battery >= 0 && d.connected);

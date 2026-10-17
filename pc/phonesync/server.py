@@ -603,8 +603,8 @@ def build_app(core) -> web.Application:
 
     async def controls_get(req):
         from . import controls
-        if not core.adbm.serial:
-            return j({"ok": False, "error": "phone not reachable over adb"}, 503)
+        if not core.adbm.serial:                  # debug-free: the phone app answers (special permissions)
+            return await guard(lambda: _json(core.phone.get_json("/api/controls", timeout=5)))
         st = await controls.read_all(core.adbm.serial)
         try:
             st["torch"] = (await core.phone.get_json("/api/torch", timeout=3)).get("on", False)
@@ -618,7 +618,7 @@ def build_app(core) -> web.Application:
         b = await req.json()
         s = core.adbm.serial
         if not s:
-            return j({"ok": False, "error": "phone not reachable over adb"}, 503)
+            return await guard(lambda: _json(core.phone.post_json("/api/controls", b, timeout=8)))
         if "toggle" in b:
             if b["toggle"] == "torch":
                 await core.phone.post_json("/api/torch", {"on": bool(b["on"])})

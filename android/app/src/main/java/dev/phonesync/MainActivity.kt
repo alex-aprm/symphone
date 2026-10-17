@@ -91,24 +91,18 @@ class MainActivity : Activity() {
         clipCard.addView(clipRow)
         root.addView(clipCard, ui.lp(bottom = 16))
 
-        // Permissions
-        root.addView(section("Permissions"))
-        perms = ui.card().apply { setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8)) }
+        // Setup checklist (what is still missing; the full list is in SetupActivity)
+        root.addView(section("Setup"))
+        perms = ui.card().apply { setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(8)) }
         root.addView(perms, ui.lp(bottom = 16))
 
         val scroll = ScrollView(this).apply { addView(root); setBackgroundColor(ui.surface); isFillViewport = true }
         setContentView(scroll)
         ui.applyWindow(this, root)
 
-        val want = ArrayList<String>()
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            want += Manifest.permission.POST_NOTIFICATIONS
-            want += listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.CAMERA)
-        }
-        if (Build.VERSION.SDK_INT >= 31 && Ble.supported && !Ble.hasPermissions()) {
-            want += listOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
-        }
-        if (want.isNotEmpty()) requestPermissions(want.toTypedArray(), 1)
+        // First run: the guided setup (pairing + permissions) instead of a burst of permission dialogs
+        if (!Setup.done && Setup.requiredOk(this)) Setup.done = true     // updated from an older version, already set up
+        if (!Setup.done && savedInstanceState == null) startActivity(Intent(this, SetupActivity::class.java))
     }
 
     override fun onResume() {
@@ -210,52 +204,15 @@ class MainActivity : Activity() {
 
     private fun renderPerms() {
         perms.removeAllViews()
-        val pm = getSystemService(PowerManager::class.java)
-        check("All files access", Environment.isExternalStorageManager()) {
-            startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
-        }
-        check("Notification access", notifAccess()) {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
-                .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, ComponentName(this, NotifListener::class.java).flattenToString()))
-        }
-        check("Open apps from PC (display over apps)", Settings.canDrawOverlays(this)) {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-        }
-        check("Unrestricted battery", pm.isIgnoringBatteryOptimizations(packageName)) {
-            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-        }
-        check("Calls & camera", granted(Manifest.permission.ANSWER_PHONE_CALLS) && granted(Manifest.permission.CAMERA)) {
-            requestPermissions(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.CAMERA), 2)
-        }
-        if (Ble.supported) {
-            check("Bluetooth (find PCs nearby)", Ble.hasPermissions()) {
-                if (Build.VERSION.SDK_INT >= 31)
-                    requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT), 3)
-            }
-        }
-    }
-
-    private fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
-
-    private fun notifAccess() =
-        Settings.Secure.getString(contentResolver, "enabled_notification_listeners")?.contains(packageName) == true
-
-    private fun check(label: String, ok: Boolean, fix: () -> Unit) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, ui.dp(8), 0, ui.dp(8))
-        }
-        row.addView(TextView(this).apply {
-            text = if (ok) "✓" else "!"
-            textSize = 15f; gravity = Gravity.CENTER
-            setTextColor(if (ok) ui.good else ui.bad)
-            typeface = Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(ui.dp(28), -2))
-        row.addView(ui.text(label, 15f), LinearLayout.LayoutParams(0, -2, 1f))
-        if (!ok) row.addView(ui.button("Grant", filled = false) { fix() }.apply {
-            textSize = 14f; setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8))
+        val items = Setup.items(this)
+        val todo = items.filter { it.ok == false && (it.required || it.id != "wireless_debugging") }
+        if (todo.isEmpty()) perms.addView(ui.text("Everything is set up.", 15f, ui.onSurfaceVariant).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(8))
         })
-        perms.addView(row)
+        for (it in todo.sortedByDescending { it.required }) perms.addView(SetupActivity.row(this, ui, it) { Setup.act(this, it.id) })
+        perms.addView(ui.button("Setup checklist", filled = false) {
+            startActivity(Intent(this, SetupActivity::class.java).putExtra(SetupActivity.EXTRA_STEP, SetupActivity.STEP_PERMISSIONS))
+        }, ui.lp(top = 8, bottom = 8))
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

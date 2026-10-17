@@ -81,7 +81,8 @@ class CameraFeed:
     async def _tick(self):
         if not self.cam.available:
             return
-        want = self.cam.consumer_active and bool(self.core.adbm.serial)
+        # adb (scrcpy camera) or, debug-free, the phone app's own camera stream over Wi-Fi
+        want = self.cam.consumer_active and (bool(self.core.adbm.serial) or self.core.phone.connected)
         if want:
             self._idle_since = 0
             req = self.cam.requested_size
@@ -116,9 +117,17 @@ class CameraFeed:
         self.size = size
         self.error = ""
         cam = {"camera_id": cid} if cid else {"camera_facing": self.facing}
-        s = ScrcpySession(self.core.adbm.serial, video_source="camera", max_size=max(w, h) * 2 if self.rotation % 180
-                          else max(w, h), camera_fps=30, max_fps=30, video_bit_rate="16M", control=False,
-                          power_on=False, **cam)
+        size = max(w, h) * 2 if self.rotation % 180 else max(w, h)
+        if self.core.adbm.serial:
+            s = ScrcpySession(self.core.adbm.serial, video_source="camera", max_size=size, camera_fps=30, max_fps=30,
+                              video_bit_rate="16M", control=False, power_on=False, **cam)
+        else:
+            from .castsession import CastSession, phone_host
+            host = phone_host(self.core.phone)
+            if not host:
+                raise RuntimeError("phone not reachable over Wi-Fi")
+            s = CastSession(host, self.core.phone.token, "camera", max_size=size, fps=30, bitrate=16_000_000,
+                            camera_id=cid, facing=self.facing)
         s.on_packet = self._on_packet
         await s.start()
         self.session = s

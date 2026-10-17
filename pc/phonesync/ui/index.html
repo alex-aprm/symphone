@@ -127,7 +127,7 @@
           <div class="search"><span class="ic">&#xE721;</span><input id="appSearch" placeholder="Search apps"></div>
           <label class="check"><input type="checkbox" id="appSystem"><span></span>System apps</label>
           <div class="grow"></div>
-          <span class="t3">Opens in its own window — works while the phone is locked · Shift+click: on the phone's screen</span>
+          <span class="t3" id="appsHint">Opens in its own window — works while the phone is locked · Shift+click: on the phone's screen</span>
         </div>
       </div>
       <div id="appGrid" class="app-grid"></div>
@@ -325,7 +325,7 @@
       <li data-s="app">Get the phone app</li>
       <li data-s="pair">Connect your phone</li>
       <li data-s="phone">Permissions on the phone</li>
-      <li data-s="wireless">Phone apps on this PC</li>
+      <li data-s="wireless">App windows (optional)</li>
       <li data-s="extras">Extras for this PC</li>
       <li data-s="done">Done</li>
     </ol>
@@ -373,9 +373,11 @@
     </div>
 
     <div class="setup-page" data-s="wireless">
-      <h1>Phone apps on this PC <span class="tag">optional</span></h1>
-      <p class="t2">Phone apps in PC windows, the phone's screen, typing with the PC keyboard and the clipboard from the
-        phone use Android's <b>wireless debugging</b>. Set it up once:</p>
+      <h1>App windows while the phone is locked <span class="tag">optional extra</span></h1>
+      <p class="t2">Everything in Symphone works with the permissions you just gave the phone app — including the
+        phone's screen on the PC (the phone asks to allow screen casting) and typing with the PC keyboard.
+        One extra needs Android's <b>wireless debugging</b>: phone apps in their own PC windows while the phone stays
+        locked in your pocket (plus call audio on the PC). Skip this if you don't need it; you can set it up later.</p>
       <p class="ok-line" id="wirelessLine" hidden><span class="ic">&#xE73E;</span> <span></span></p>
       <div class="setup-qr-row" id="wirelessPair">
         <div class="qr-box"><div id="adbQr" class="qr"></div></div>

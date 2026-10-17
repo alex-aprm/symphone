@@ -144,6 +144,15 @@ class Mirror:
     def audio(self, source: str, to_virtual_mic=False):
         """Phone audio -> PC. source: output | playback | mic-voice-communication | voice-call ..."""
         key = f"audio:{source}"
+        if not self.core.adbm.serial:
+            # Debug-free: the phone app streams its own capture (playback capture asks for casting consent once)
+            if source == "voice-call":
+                raise ConnectionError("call audio on the PC needs wireless debugging")
+            p = self.procs.get(key)
+            if p and p.poll() is None:
+                return False
+            self.procs[key] = CastAudio(self.core, "mic" if source.startswith("mic") else "playback", to_virtual_mic)
+            return True
         exe = None
         if to_virtual_mic:
             exe = SCRCPY_DIR / "scrcpy-mic.exe"      # separate exe so Windows can route it to CABLE Input
@@ -158,6 +167,79 @@ class Mirror:
     def _title(self, what):
         name = settings.phone_name()
         return f"{what} · {name}" if what != "Phone" else name
+
+
+class CastAudio:
+    """Phone audio from the phone app's own capture (castsession kind="audio"), played on the PC. Looks like a
+    Popen to Mirror (poll / terminate)."""
+
+    def __init__(self, core, source: str, to_virtual_mic: bool):
+        import queue
+        import threading
+        self.core, self.source, self.to_cable = core, source, to_virtual_mic
+        self._q: queue.Queue = queue.Queue(maxsize=50)
+        self._done = False
+        self._sess = None
+        self._task = asyncio.ensure_future(self._run())
+        threading.Thread(target=self._play, daemon=True, name=f"cast-audio-{source}").start()
+
+    def poll(self):
+        return 0 if self._done else None
+
+    def terminate(self):
+        self._done = True
+        self._task.cancel()
+        if self._sess:
+            asyncio.ensure_future(self._sess.stop())
+        try:
+            self._q.put_nowait(None)
+        except Exception:
+            pass
+
+    async def _run(self):
+        from .castsession import CastSession, phone_host
+        try:
+            host = phone_host(self.core.phone)
+            if not host:
+                raise ConnectionError("phone not reachable over Wi-Fi")
+            s = self._sess = CastSession(host, self.core.phone.token, "audio", audio=self.source)
+            s.on_audio = lambda pts, pcm: self._q.full() or self._q.put_nowait(pcm)
+            done = asyncio.Event()
+            s.on_close = done.set
+            await s.start()
+            await done.wait()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.info("cast audio: %s", e)
+        finally:
+            self._done = True
+            try:
+                self._q.put_nowait(None)
+            except Exception:
+                pass
+
+    def _play(self):
+        import pyaudiowpatch as pa
+        p = pa.PyAudio()
+        try:
+            idx = None
+            if self.to_cable:
+                idx = next((i for i in range(p.get_device_count())
+                            if "CABLE Input" in p.get_device_info_by_index(i)["name"]
+                            and p.get_device_info_by_index(i)["maxOutputChannels"] > 0), None)
+            out = p.open(format=pa.paInt16, channels=2, rate=48000, output=True, output_device_index=idx,
+                         frames_per_buffer=960)
+            while not self._done:
+                pcm = self._q.get()
+                if pcm is None:
+                    break
+                out.write(pcm)
+            out.close()
+        except Exception as e:
+            log.info("cast audio playback: %s", e)
+        finally:
+            p.terminate()
 
 
 def route_app_to_cable(exe_name: str) -> bool:

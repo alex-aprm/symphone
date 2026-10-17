@@ -127,6 +127,7 @@ object Api {
                     resp.json(JSONObject().put("error", e.message ?: e.toString()), 404)
                 }
             }
+            "setup" -> resp.json(Setup.json(Hub.ctx))
             "cameras" -> resp.json(JSONObject().put("cameras", Cameras.list()))
             "camera" -> when (seg.getOrNull(1)) {
                 "orientation" -> resp.json(Cameras.orientation(req.query["id"]))

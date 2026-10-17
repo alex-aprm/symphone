@@ -101,8 +101,12 @@ class PairActivity : Activity() {
         status.text = msg
         status.setTextColor(if (ok) ui.onSurface else ui.bad)
         buttons.removeAllViews()
-        buttons.addView(ui.button("Done") {
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+        val continueSetup = ok && !Setup.done                 // first run: on to the permissions checklist
+        buttons.addView(ui.button(if (continueSetup) "Continue setup" else "Done") {
+            if (continueSetup) startActivity(Intent(this, SetupActivity::class.java)
+                .putExtra(SetupActivity.EXTRA_STEP, SetupActivity.STEP_PERMISSIONS)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            else startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
             finish()
         }, ui.lp())
         if (ok) window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
