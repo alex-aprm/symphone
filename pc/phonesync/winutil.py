@@ -40,6 +40,68 @@ def set_clipboard(text: str):
         user32.CloseClipboard()
 
 
+CF_DIB, CF_HDROP = 8, 15
+
+
+def _global(data: bytes):
+    h = kernel32.GlobalAlloc(0x0042, len(data))
+    p = kernel32.GlobalLock(h)
+    ctypes.memmove(p, data, len(data))
+    kernel32.GlobalUnlock(h)
+    return h
+
+
+def set_clipboard_files(paths: list[str], dib: bytes | None = None) -> bool:
+    """Puts files on the clipboard the way Explorer's Copy does (paste in Explorer, chats, mail); `dib` (a BMP without
+    its file header) adds the picture itself for apps that paste images (Paint, Word, editors)."""
+    # DROPFILES {pFiles=20, pt, fNC, fWide=1} + a double-null-terminated list of wide paths
+    names = ("\0".join(str(Path(p).resolve()) for p in paths) + "\0\0").encode("utf-16-le")
+    drop = (20).to_bytes(4, "little") + bytes(12) + (1).to_bytes(4, "little") + names
+    for _ in range(10):
+        if user32.OpenClipboard(None):
+            break
+        threading.Event().wait(0.05)
+    else:
+        return False
+    try:
+        user32.EmptyClipboard()
+        user32.SetClipboardData(CF_HDROP, _global(drop))
+        effect = user32.RegisterClipboardFormatW("Preferred DropEffect")
+        user32.SetClipboardData(effect, _global((1).to_bytes(4, "little")))      # DROPEFFECT_COPY
+        if dib:
+            user32.SetClipboardData(CF_DIB, _global(dib))
+        return True
+    finally:
+        user32.CloseClipboard()
+
+
+def bring_to_front(title: str) -> bool:
+    """Raises this process's top-level window called `title` (restoring it if minimized)."""
+    pid = kernel32.GetCurrentProcessId()
+    found = []
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def each(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if buf.value == title:
+                found.append(hwnd)
+                return False
+        return True
+
+    user32.EnumWindows(proc(each), 0)
+    if not found:
+        return False
+    hwnd = found[0]
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)                    # SW_RESTORE
+    user32.BringWindowToTop(hwnd)
+    return bool(user32.SetForegroundWindow(hwnd))
+
+
 def get_clipboard() -> str:
     if not user32.OpenClipboard(None):
         return ""

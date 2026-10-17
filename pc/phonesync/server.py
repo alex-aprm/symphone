@@ -384,6 +384,28 @@ def build_app(core) -> web.Application:
         return await guard(go)
     r.add_post("/api/media/download", media_download)
 
+    async def media_copy(req):
+        """Copy (Ctrl+C) in Photos: downloads the originals and puts them on the clipboard, ready to paste."""
+        b = await req.json()
+        async def go():
+            ids = [int(i) for i in b["ids"]][:500]
+            if len(ids) > 3:
+                ph = core.phone
+                async with core.transfers.batch(f"Copying {len(ids)} items from {ph.name}", "down", ph.name) as bt:
+                    bt.files_total = len(ids)
+                    paths = await core.media.download(ids)
+            else:
+                paths = await core.media.download(ids)
+            order = {core.media.local_name(core.media.items[i]).name: n for n, i in enumerate(ids) if i in core.media.items}
+            paths.sort(key=lambda p: order.get(Path(p).name, 0))
+            ok = await asyncio.to_thread(desktop.copy_files, paths)
+            if not paths:
+                return j({"ok": False, "error": "Couldn't get the files from the phone"})
+            return j({"ok": ok, "count": len(paths), "failed": len(ids) - len(paths),
+                      **({} if ok else {"error": "Couldn't put the files on the clipboard"})})
+        return await guard(go)
+    r.add_post("/api/media/copy", media_copy)
+
     async def open_local(req):
         """Downloads (if needed) and opens a media item with the default app."""
         mid = int(req.match_info["id"])

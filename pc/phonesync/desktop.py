@@ -101,6 +101,46 @@ def set_clipboard(text: str) -> bool:
         return False
 
 
+def _dib(path: str) -> bytes | None:
+    """The picture as a device-independent bitmap (BMP minus its 14-byte file header), or None if it can't be read."""
+    try:
+        import io
+        from PIL import Image
+        with Image.open(path) as im:
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "BMP")
+        return buf.getvalue()[14:]
+    except Exception:
+        return None
+
+
+def copy_files(paths: list[str]) -> bool:
+    """Files on the clipboard, ready to paste; a single photo also as the picture itself."""
+    if not paths:
+        return False
+    if IS_WIN:
+        one = paths[0] if len(paths) == 1 and Path(paths[0]).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp") else None
+        return winutil.set_clipboard_files(paths, _dib(one) if one else None)
+    uris = "\n".join(Path(p).resolve().as_uri() for p in paths)
+    try:
+        if IS_MAC:
+            files = ", ".join(f'POSIX file "{Path(p).resolve()}"' for p in paths)
+            return subprocess.run(["osascript", "-e", f"set the clipboard to {{{files}}}"], timeout=10).returncode == 0
+        if os.environ.get("DISPLAY") and shutil.which("xclip"):
+            cmd = ["xclip", "-selection", "clipboard", "-t", "text/uri-list"]
+        elif os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-copy"):
+            cmd = ["wl-copy", "--type", "text/uri-list"]
+        else:
+            return False
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p.stdin.write(uris.encode())
+        p.stdin.close()
+        return True
+    except Exception as e:
+        log.info("clipboard files: %s", e)
+        return False
+
+
 def get_clipboard() -> str:
     if IS_WIN:
         return winutil.get_clipboard()

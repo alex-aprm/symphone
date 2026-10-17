@@ -654,7 +654,8 @@ async def pin_window(wid: str | None, on: bool):
     win = _windows.get(wid or "")
     if win is not None:
         try:
-            await asyncio.to_thread(setattr, win, "on_top", on)
+            from . import gui
+            await asyncio.to_thread(gui.set_topmost, win, on)
         except Exception as e:
             log.debug("pin: %s", e)
 

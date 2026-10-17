@@ -13,6 +13,9 @@ from .config import UI_PORT, LOG_DIR, settings
 
 def _post_running(path, body=None) -> bool:
     """Talks to an already-running instance (single instance + the file manager's 'Send to')."""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)     # ASFW_ANY: let it come to the front for us
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{UI_PORT}{path}", data=json.dumps(body or {}).encode(),
                                      headers={"Content-Type": "application/json", "X-PhoneSync": "1"}, method="POST")

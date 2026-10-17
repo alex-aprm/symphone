@@ -92,6 +92,7 @@
           <div class="grow"></div>
           <span id="selInfo" class="t2"></span>
           <button class="btn" id="selClear" hidden>Clear</button>
+          <button class="btn" id="selCopy" hidden title="Copy to clipboard (Ctrl+C)"><span class="ic">&#xE8C8;</span> Copy</button>
           <button class="btn accent" id="selDownload" hidden><span class="ic">&#xE896;</span> Download</button>
           <span class="ic t3" title="Thumbnail size">&#xE71E;</span>
           <input type="range" id="tileSize" min="96" max="320" value="168" title="Thumbnail size">
@@ -312,12 +313,22 @@
 <!-- photo viewer -->
 <div id="viewer" class="viewer" hidden>
   <div class="v-top"><span id="vTitle"></span><div class="grow"></div>
+    <button class="vbtn" id="vCopy" title="Copy to clipboard (Ctrl+C)"><span class="ic">&#xE8C8;</span></button>
     <button class="vbtn" id="vOpen" title="Open in Windows"><span class="ic">&#xE8A7;</span></button>
     <button class="vbtn" id="vSave" title="Download"><span class="ic">&#xE896;</span></button>
     <button class="vbtn" id="vClose" title="Close (Esc)"><span class="ic">&#xE711;</span></button></div>
   <button class="v-nav prev" id="vPrev"><span class="ic">&#xE76B;</span></button>
   <div id="vStage" class="v-stage"></div>
   <button class="v-nav next" id="vNext"><span class="ic">&#xE76C;</span></button>
+</div>
+
+<!-- right-click menu (photos) -->
+<div id="ctxMenu" class="menu ctx" hidden>
+  <button data-ctx="copy"><span class="ic">&#xE8C8;</span>Copy<small>Ctrl+C</small></button>
+  <button data-ctx="download"><span class="ic">&#xE896;</span>Download</button>
+  <button data-ctx="open"><span class="ic">&#xE8A7;</span>Open in Windows</button>
+  <hr data-ctx-grid>
+  <button data-ctx="select" data-ctx-grid><span class="ic">&#xE73A;</span>Select</button>
 </div>
 
 <!-- pairing dialog -->

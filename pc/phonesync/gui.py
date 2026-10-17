@@ -16,15 +16,44 @@ _quitting = False
 mica_on = False         # the main window shows the Windows Mica material (the page then draws translucent)
 
 
+_show_lock = threading.Lock()
+
+
 def show_window():
-    if _window:
-        _window.show()
-        _window.restore()
+    """Brings the window up. Never blocks the caller: the window calls wait on the GUI thread, which may itself be
+    waiting on the core loop while the window is still being created (a second launch asks for /api/show then)."""
+    threading.Thread(target=_show, daemon=True, name="show").start()
+
+
+def _show():
+    if not _window:
+        return
+    _window.events.loaded.wait(30)
+    with _show_lock:                    # one at a time: a burst of launches / toast clicks must not race
         try:
-            _window.on_top = True
-            _window.on_top = False
-        except Exception:
-            pass
+            _window.show()              # marshalled to the GUI thread (Invoke)
+            _window.restore()
+            if IS_WIN:
+                # Not `on_top = True/False`: pywebview sets TopMost from this thread, a cross-thread call made while
+                # holding the GIL that the GUI thread needs, which freezes the whole app. Plain Win32 instead.
+                from . import winutil
+                winutil.bring_to_front(APP_NAME)
+        except Exception as e:
+            log.debug("show: %s", e)
+
+
+def set_topmost(win, on: bool):
+    """Always on top. On Windows it is set on the window's GUI thread: pywebview's `on_top` setter does it from the
+    calling thread while holding the GIL, which can freeze the app."""
+    form = getattr(win, "native", None) if IS_WIN else None
+    if form is None:
+        win.on_top = on
+        return
+    from System import Func, Type
+
+    def apply():
+        form.TopMost = on
+    form.Invoke(Func[Type](apply))
 
 
 def pick(kind="files"):

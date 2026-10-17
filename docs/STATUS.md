@@ -1,7 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.1** (Windows app; phone app 2.7.0, versionCode 11).
-(Windows app + phone app versionCode 9).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.7.2** (Windows app; phone app 2.7.2, versionCode 12).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -60,6 +59,17 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.7.2
+
+| Request | Status | Notes |
+|---|---|---|
+| Black screen over Wi‑Fi | ✅ | Root cause: a second copy of the app could start (the first was busy) and take over the local UI port, so viewers dropped. Now a single instance; also fixed a freeze when bringing the window forward or pinning (pywebview set TopMost cross-thread while holding the GIL). App windows keep their picture while the phone is locked. Smoother Wi‑Fi video (frame pacing, Wi‑Fi bitrate, no Wi‑Fi power save while streaming). |
+| Unlock from the PC failed | ✅ | With app windows open, the PIN went to the focused virtual display; keys now always go to the phone's own screen (`input -d 0`). |
+| Why not Wi‑Fi Direct | ⛔ | This phone can't stay on its Wi‑Fi and the PC's direct network at once (no STA+STA for local-only); Wi‑Fi Direct is used only when there is no LAN path. |
+| App is a singleton on Windows | ✅ | Named mutex; a second launch brings the window to the front. |
+| Copy in Photos (Ctrl+C, toolbar, right-click) | ✅ | Originals on the clipboard as files (Explorer, chats, mail) and, for one photo, as a picture (Paint, Word). |
+| Demo GIF in the README | ✅ | `pc/tools/demo_gif.py`: tour + three phone apps at once, one operated from the PC; personal details blurred. |
 
 ## Next cycles
 

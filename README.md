@@ -10,6 +10,8 @@
 keyboard, answer notifications, browse photos and files, share the clipboard, take calls, use the phone as a webcam
 or as a second screen — over USB, Wi‑Fi or both, even while the phone stays locked in your pocket.
 
+<p align="center"><img src="docs/demo.gif" alt="Symphone: the main window, then Clock, Compass and Calculator from the phone in their own PC windows, operated from the PC"></p>
+
 ## What you can do
 
 ### Phone apps in PC windows
@@ -50,6 +52,7 @@ screenshot, zoom, pin on top and stats.</sub>
 | ![Photos (thumbnails blurred)](docs/screenshots/photos.png) | ![Files](docs/screenshots/files.png) |
 
 - **All your photos and videos** at a glance; new shots appear within a second and can be imported automatically.
+- **Copy** a photo (Ctrl+C, the toolbar or right-click) and paste it anywhere — into a chat, an email, Word or Explorer.
 - The phone's storage is **in Explorer**, next to *This PC*. Copies use USB and Wi‑Fi at the same time.
 - Right-click → **Send to → your phone** in Explorer; on the phone, **Share → Send to PC**.
 

@@ -353,14 +353,68 @@ $("#gridInner").addEventListener("dragstart", e => {
 function updateSel() {
   const n = media.sel.size;
   $("#selInfo").textContent = n ? `${n} selected` : "";
-  $("#selClear").hidden = $("#selDownload").hidden = !n;
+  $("#selClear").hidden = $("#selDownload").hidden = $("#selCopy").hidden = !n;
 }
+/* copy (Ctrl+C, toolbar, right-click): the PC downloads the originals and puts them on the clipboard as files
+   (paste in Explorer, chats, mail); a single photo also goes on as the picture (Paint, Word, editors) */
+async function copyMedia(ids) {
+  if (!ids.length) return;
+  const one = ids.length === 1 && media.byId.get(ids[0]);
+  toast(`Copying ${one ? one.name : ids.length + " items"}…`);
+  const r = await api("/api/media/copy", { ids });
+  if (r.ok) toast(r.count === 1 ? "Copied — ready to paste" : `${r.count} items copied — ready to paste` + (r.failed ? ` (${r.failed} failed)` : ""));
+}
+let hoverIdx = -1, ctxIds = [], ctxIdx = -1;
+$("#gridInner").addEventListener("pointerover", e => { const el = e.target.closest(".tile"); hoverIdx = el ? +el.dataset.idx : -1; });
+$("#gridInner").addEventListener("pointerleave", () => hoverIdx = -1);
+function gridTargets(idx) {
+  // the selection when the item is part of it (or nothing is under the pointer), otherwise that item alone
+  const m = media.list[idx];
+  if (media.sel.size && (!m || media.sel.has(m.id))) return [...media.sel];
+  return m ? [m.id] : [];
+}
+function openCtx(e, ids, idx, inGrid) {
+  e.preventDefault();
+  if (!ids.length) return;
+  ctxIds = ids; ctxIdx = idx;
+  const menu = $("#ctxMenu");
+  menu.querySelectorAll("[data-ctx-grid]").forEach(x => x.hidden = !inGrid);
+  menu.querySelector('[data-ctx="open"]').hidden = ids.length > 1;
+  menu.querySelector('[data-ctx="copy"]').lastChild.previousSibling.textContent = ids.length > 1 ? `Copy ${ids.length} items` : "Copy";
+  menu.hidden = false;
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = Math.min(e.clientX, innerWidth - w - 6) + "px";
+  menu.style.top = Math.min(e.clientY, innerHeight - h - 6) + "px";
+}
+$("#gridInner").addEventListener("contextmenu", e => {
+  const el = e.target.closest(".tile"); if (!el) return;
+  const idx = +el.dataset.idx; openCtx(e, gridTargets(idx), idx, true);
+});
+$("#vStage").addEventListener("contextmenu", e => { if (vIdx >= 0) openCtx(e, [media.list[vIdx].id], vIdx, false); });
+$("#ctxMenu").addEventListener("click", e => {
+  const b = e.target.closest("[data-ctx]"); if (!b) return;
+  $("#ctxMenu").hidden = true;
+  const ids = ctxIds;
+  if (b.dataset.ctx === "copy") copyMedia(ids);
+  else if (b.dataset.ctx === "download") api("/api/media/download", { ids });
+  else if (b.dataset.ctx === "open") api(`/api/media/${ids[0]}/open`, {});
+  else if (b.dataset.ctx === "select") { ids.forEach(id => media.sel.add(id)); media.lastIdx = ctxIdx; updateSel(); renderGrid(); }
+});
+document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctxMenu")) $("#ctxMenu").hidden = true; }, true);
+window.addEventListener("blur", () => $("#ctxMenu").hidden = true);
+$("#selCopy").onclick = () => copyMedia([...media.sel]);
 $("#selClear").onclick = () => { media.sel.clear(); updateSel(); renderGrid(); };
 $("#selDownload").onclick = async () => {
   const ids = [...media.sel]; media.sel.clear(); updateSel(); renderGrid();
   await api("/api/media/download", { ids });
 };
 document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) || window.getSelection()?.toString();
+  if (e.key === "Escape" && !$("#ctxMenu").hidden) { $("#ctxMenu").hidden = true; return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C") && !typing) {
+    if (!$("#viewer").hidden && vIdx >= 0) { e.preventDefault(); copyMedia([media.list[vIdx].id]); return; }
+    if (tabActive("photos")) { const ids = gridTargets(hoverIdx); if (ids.length) { e.preventDefault(); copyMedia(ids); } return; }
+  }
   if (!$("#viewer").hidden) {
     if (e.key === "Escape") closeViewer();
     if (e.key === "ArrowLeft") stepViewer(-1);
@@ -438,6 +492,7 @@ const vUp = e => { vPtrs.delete(e.pointerId); if (vPtrs.size < 2) vPinch = null;
 $("#vStage").addEventListener("pointerup", vUp); $("#vStage").addEventListener("pointercancel", vUp);
 $("#vClose").onclick = closeViewer; $("#vPrev").onclick = () => stepViewer(-1); $("#vNext").onclick = () => stepViewer(1);
 $("#vSave").onclick = () => api("/api/media/download", { ids: [media.list[vIdx].id] });
+$("#vCopy").onclick = () => copyMedia([media.list[vIdx].id]);
 $("#vOpen").onclick = () => api(`/api/media/${media.list[vIdx].id}/open`, {});
 
 /* ---------------------------------------------------------------- files */
