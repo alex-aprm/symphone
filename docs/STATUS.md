@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.3** (Windows app; phone app 2.8.3, versionCode 17).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.4** (Windows app; phone app 2.8.4, versionCode 18).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -60,12 +60,13 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
 
-## 2.8.3
+## 2.8.4 (2.8.3 was not released)
 
 | Request | Status | Notes |
 |---|---|---|
 | Wi-Fi phone screen slow / laggy | ✅ | Measured on the nubia over Wi-Fi (debug-free casting, real viewer window). Causes: the phone encoded every composition of its 120 Hz panel (~110 fps, 8 Mbit/s spread thin), and the viewer, holding at most 4 frames while smoothing jitter by up to 60 ms, kept pushing out the oldest frame so nothing ever came due: ~9-21 fps on screen during scrolling. Fixes: encoder capped at the requested fps (max-fps-to-encoder), the viewer shows the oldest held frame instead of dropping it, smoothing capped at 30 ms. Result: steady 60 fps from the phone, ~46 fps average shown while scrolling (was 21), smoothing ~25 ms (was 36-60), 95% of frames within 14-22 ms of the best one (was 70 ms). |
 | Compression | ✅ | H.265 on Wi-Fi when the PC decodes it in hardware (WebCodecs check): the phone app (debug-free) and scrcpy (adb over Wi-Fi) encode H.265, falling back to H.264 if the phone can't or the decoder fails. ~21% less data at the same frame rate. USB stays H.264. |
+| H.265 picture cropped | ✅ | Windows' H.265 decoder put out 1280x720 frames (a crop) when WebCodecs wasn't given the coded size; the viewer now configures the decoder with the stream size. |
 | Remove phone confirmation vanished | ✅ | The confirmation bar is now part of the phone list, so state updates no longer wipe it. |
 
 ## 2.8.0

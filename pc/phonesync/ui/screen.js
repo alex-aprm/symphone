@@ -23,6 +23,7 @@ const A_DOWN = 0, A_UP = 1, A_MOVE = 2;
 
 let ws = null, decoder = null, codecStr = '', lastConfig = null, pendingConfig = null, needKey = true;
 let configuredAt = 0, backlogSince = 0;
+let streamW = 0, streamH = 0;                  // size the server announced (meta / size events)
 let vw = 0, vh = 0, meta = {}, gotFrame = false, closedByError = false, resetAsked = 0;
 let fit = { x: 0, y: 0, w: 0, h: 0 };
 const vz = { z: 1, tx: 0, ty: 0 };              // local view zoom (magnifier)
@@ -96,13 +97,14 @@ function scheduleReconnect() {
 
 function onJson(m) {
   if (m.type === 'meta') {
-    meta = m; fitted = false; setSize(m.width, m.height);
+    meta = m; fitted = false; streamW = m.width; streamH = m.height; setSize(m.width, m.height);
     if (document.hasFocus()) send({ t: 'focus', on: true });
     document.body.classList.toggle('virtual', (m.display || '').startsWith('virtual'));
     if (m.codec !== 'h264' && m.codec !== 'h265') setStatus(`Codec ${m.codec} is not supported by the viewer`, true);
     else setStatus('Waiting for video…');
   } else if (m.type === 'size') {
     const flipped = vw && (vw > vh) !== (m.width > m.height);
+    streamW = m.width; streamH = m.height;
     setSize(m.width, m.height);
     if (flipped && !meta.flex) fitWindowToStream();
   } else if (m.type === 'secure') {
@@ -155,7 +157,9 @@ function makeDecoder(codec) {
   });
   configuredAt = performance.now(); backlogSince = 0;
   pacer.reset();                                     // a new encoder session may restart its timestamps
-  decoder.configure({ codec, optimizeForLatency: true, hardwareAcceleration: P.get('hw') || 'no-preference' });
+  // The coded size matters: without it Windows' H.265 decoder puts out 1280x720 frames (a crop of the picture).
+  const size = streamW && streamH ? { codedWidth: streamW, codedHeight: streamH } : {};
+  decoder.configure({ codec, ...size, optimizeForLatency: true, hardwareAcceleration: P.get('hw') || 'no-preference' });
   needKey = true;
 }
 
