@@ -790,9 +790,36 @@ async def open_window(kind: str = "screen", *, port: int = UI_PORT, **params):
         return win
     w = await asyncio.to_thread(create)
     _windows[key] = w
+    _start_pin_keeper()
     # opened from a notification click / hotkey: the new window should be the active one, not behind the others
     asyncio.get_running_loop().run_in_executor(None, _to_front, title, 5.0)
     return w
+
+
+_pin_keeper: asyncio.Task | None = None
+
+
+def _start_pin_keeper():
+    global _pin_keeper
+    if IS_WIN and (_pin_keeper is None or _pin_keeper.done()):
+        _pin_keeper = asyncio.get_running_loop().create_task(_keep_pinned())
+
+
+async def _keep_pinned():
+    """Pinned windows stay on top: if anything clears always-on-top, it is put back (the user shouldn't have to
+    pin a window again)."""
+    from . import winutil
+    while _windows:
+        await asyncio.sleep(2)
+        for key in list(settings["pinned_windows"] or []):
+            w = _windows.get(key)
+            if w is None:
+                continue
+            try:
+                if await asyncio.to_thread(winutil.keep_topmost, w.title):
+                    log.info("window %s: always on top restored", key)
+            except Exception as e:
+                log.debug("keep pinned: %s", e)
 
 
 def _to_front(title: str, wait: float = 0.0):

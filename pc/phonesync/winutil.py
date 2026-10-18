@@ -78,6 +78,16 @@ def set_clipboard_files(paths: list[str], dib: bytes | None = None) -> bool:
 
 def bring_to_front(title: str) -> bool:
     """Raises this process's top-level window called `title` (restoring it if minimized)."""
+    hwnd = find_window(title)
+    if not hwnd:
+        return False
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)                    # SW_RESTORE
+    return force_foreground(hwnd)
+
+
+def find_window(title: str):
+    """This process's visible top-level window called `title`, or None."""
     pid = kernel32.GetCurrentProcessId()
     found = []
     proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -92,14 +102,19 @@ def bring_to_front(title: str) -> bool:
                 found.append(hwnd)
                 return False
         return True
-
     user32.EnumWindows(proc(each), 0)
-    if not found:
+    return found[0] if found else None
+
+
+def keep_topmost(title: str) -> bool:
+    """Puts the window back on top if something took always-on-top away. True when it had to."""
+    hwnd = find_window(title)
+    if not hwnd or user32.GetWindowLongW(hwnd, -20) & 0x8:          # GWL_EXSTYLE & WS_EX_TOPMOST
         return False
-    hwnd = found[0]
-    if user32.IsIconic(hwnd):
-        user32.ShowWindow(hwnd, 9)                    # SW_RESTORE
-    return force_foreground(hwnd)
+    HWND_TOPMOST = wintypes.HWND(-1)
+    # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS: don't wait on the window's GUI thread
+    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, 0x1 | 0x2 | 0x10 | 0x4000)
+    return True
 
 
 def force_foreground(hwnd) -> bool:

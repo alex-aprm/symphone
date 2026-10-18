@@ -604,7 +604,9 @@ function setPinned(on) {
   const b = $('[data-act=pin]');
   b.classList.toggle('on', on);
   b.title = on ? 'Kept on top (click to release)' : 'Keep on top';
-  send({ t: 'pin', on });
+  // over HTTP, not the stream socket: a click while the stream reconnects must not be lost
+  fetch('/api/screen/pin', { method: 'POST', headers: { 'X-PhoneSync': '1', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wid: P.get('wid'), on }) }).catch(() => send({ t: 'pin', on }));
 }
 $('[data-act=pin]').classList.toggle('on', pinned);
 if (pinned) $('[data-act=pin]').title = 'Kept on top (click to release)';

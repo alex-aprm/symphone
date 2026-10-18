@@ -64,6 +64,13 @@ def build_app(core) -> web.Application:
         return j({"ok": True})
     r.add_post("/api/screen/open", screen_open)
 
+    async def screen_pin(req):
+        """A phone window's pin button: over HTTP, so it works while the window's stream is reconnecting."""
+        b = await req.json()
+        await screen_ws.pin_window(str(b.get("wid") or ""), bool(b.get("on")))
+        return j({"ok": True})
+    r.add_post("/api/screen/pin", screen_pin)
+
 
     async def index(req):
         return web.FileResponse(UI_DIR / "index.html", headers={"Cache-Control": "no-cache"})
