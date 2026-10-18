@@ -35,6 +35,39 @@ class ControlService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         Log.i(TAG, "control service on")
+        applyKeyboard()
+    }
+
+    /** While the PC is showing and typing into the phone, the phone's on-screen keyboard stays down. */
+    fun applyKeyboard() = main.post {
+        try {
+            softKeyboardController.showMode = if (hideKeyboard) SHOW_MODE_HIDDEN else SHOW_MODE_AUTO
+        } catch (e: Exception) { Log.w(TAG, "keyboard: $e") }
+    }
+
+    /** Android 13+: this service's own input connection to the focused field (flagInputMethodEditor), which takes
+     *  text and key events like a keyboard does: no reading back the field (which for some apps, e.g. Telegram,
+     *  reports its placeholder as text), and apps handle Ctrl shortcuts themselves. */
+    private fun ic(): android.accessibilityservice.InputMethod.AccessibilityInputConnection? =
+        if (Build.VERSION.SDK_INT >= 33) inputMethod?.let { m -> m.currentInputConnection?.takeIf { m.currentInputStarted } } else null
+
+    @android.annotation.TargetApi(33)
+    private fun icKey(ic: android.accessibilityservice.InputMethod.AccessibilityInputConnection, code: Int, meta: Int) {
+        val now = SystemClock.uptimeMillis()
+        for (a in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP))
+            ic.sendKeyEvent(KeyEvent(now, now, a, code, 0, meta, android.view.KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+                KeyEvent.FLAG_SOFT_KEYBOARD or KeyEvent.FLAG_KEEP_TOUCH_MODE))
+    }
+
+    /** Ctrl+C / Ctrl+X from the PC: the selection goes to the PC's clipboard (and the app copies/cuts as usual). */
+    private fun copySelection(ic: android.accessibilityservice.InputMethod.AccessibilityInputConnection?, n: AccessibilityNodeInfo?) {
+        val sel = if (ic != null && Build.VERSION.SDK_INT >= 33) {
+            ic.getSurroundingText(100_000, 100_000, 0)?.let { st ->
+                val a = st.selectionStart.coerceIn(0, st.text.length); val b = st.selectionEnd.coerceIn(0, st.text.length)
+                st.text.subSequence(minOf(a, b), maxOf(a, b)).toString()
+            }
+        } else n?.let { val (t, a, b) = state(it); t.substring(a, b) }
+        if (!sel.isNullOrEmpty()) clipSink?.invoke(sel)
     }
 
     override fun onDestroy() {
@@ -200,6 +233,15 @@ class ControlService : AccessibilityService() {
     fun key(code: Int, a: Int, meta: Int) = main.post {
         if (a == 1) return@post
         val ctrl = meta and KeyEvent.META_CTRL_ON != 0
+        val ic = ic()
+        if (ic != null && Build.VERSION.SDK_INT >= 33 && code !in GLOBAL_KEYS) {
+            when {
+                code == KeyEvent.KEYCODE_COPY || ctrl && code == KeyEvent.KEYCODE_C -> copySelection(ic, null)
+                code == KeyEvent.KEYCODE_CUT || ctrl && code == KeyEvent.KEYCODE_X -> copySelection(ic, null)
+            }
+            icKey(ic, code, meta)
+            return@post
+        }
         when (code) {
             KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> global("back")
             KeyEvent.KEYCODE_HOME -> global("home")
@@ -220,7 +262,8 @@ class ControlService : AccessibilityService() {
 
     /** Current text without the hint, and the selection (clamped). */
     private fun state(n: AccessibilityNodeInfo): Triple<String, Int, Int> {
-        val t = if (Build.VERSION.SDK_INT >= 26 && n.isShowingHintText) "" else (n.text?.toString() ?: "")
+        val raw = n.text?.toString() ?: ""
+        val t = if (Build.VERSION.SDK_INT >= 26 && (n.isShowingHintText || raw.isNotEmpty() && raw == n.hintText?.toString())) "" else raw
         var s = n.textSelectionStart; var e = n.textSelectionEnd
         if (s < 0 || e < 0) { s = t.length; e = t.length }
         s = s.coerceIn(0, t.length); e = e.coerceIn(0, t.length)
@@ -247,6 +290,8 @@ class ControlService : AccessibilityService() {
         val l = CountDownLatch(1)
         main.post {
             try {
+                val ic = ic()
+                if (ic != null && Build.VERSION.SDK_INT >= 33) { ic.commitText(s, 1, null); ok = true; l.countDown(); return@post }
                 val n = focused()
                 if (n != null) {
                     val (t, a, b) = state(n)
@@ -263,11 +308,11 @@ class ControlService : AccessibilityService() {
     private fun edit(code: Int, ctrl: Boolean, shift: Boolean) {
         val n = focused() ?: return
         val (t, a, b) = state(n)
-        if (ctrl) {
+        if (ctrl || code == KeyEvent.KEYCODE_COPY || code == KeyEvent.KEYCODE_CUT) {
             when (code) {
                 KeyEvent.KEYCODE_A -> select(n, 0, t.length)
-                KeyEvent.KEYCODE_C -> n.performAction(AccessibilityNodeInfo.ACTION_COPY)
-                KeyEvent.KEYCODE_X -> n.performAction(AccessibilityNodeInfo.ACTION_CUT)
+                KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_COPY -> { copySelection(null, n); n.performAction(AccessibilityNodeInfo.ACTION_COPY) }
+                KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_CUT -> { copySelection(null, n); n.performAction(AccessibilityNodeInfo.ACTION_CUT) }
                 KeyEvent.KEYCODE_V -> n.performAction(AccessibilityNodeInfo.ACTION_PASTE)
             }
             return
@@ -433,6 +478,13 @@ class ControlService : AccessibilityService() {
     companion object {
         const val TAG = "SymphoneCtl"
         @Volatile var instance: ControlService? = null
+        private val GLOBAL_KEYS = setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_HOME,
+            KeyEvent.KEYCODE_APP_SWITCH, KeyEvent.KEYCODE_NOTIFICATION, KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
+        /** Where text copied with Ctrl+C/X goes: the PC of the stream that is showing the phone (null: none). */
+        @Volatile var clipSink: ((String) -> Unit)? = null
+        @Volatile var hideKeyboard = false
+            set(v) { field = v; instance?.applyKeyboard() }
         @Volatile private var consentUntil = 0L
         /** The consent dialog's confirm button, when it has no standard id (a few languages; ids are tried first). */
         private val START = listOf("start now", "start", "share screen", "share", "начать", "начать сейчас",

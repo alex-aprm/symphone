@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.5** (Windows app; phone app 2.8.4, versionCode 18).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.6** (Windows app; phone app 2.8.6, versionCode 19).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,14 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.8.6
+
+| Request | Status | Notes |
+|---|---|---|
+| Telegram's placeholder typed into its message field | ✅ | Debug-free typing used to read the field and set the whole text back; Telegram (like Settings search) reports its placeholder as the field's text, so it ended up in the message. On Android 13+ the accessibility service now has its own input connection (flagInputMethodEditor): text is committed at the cursor like a keyboard does, never reading the field. Verified on the Settings search field, which reports its hint as text the same way: typed text replaces the hint. |
+| No on-screen keyboard while typing from the PC | ✅ | Debug-free: while the PC shows the phone, the accessibility service keeps the soft keyboard hidden (back to normal when the window closes; verified: mode 1 while casting, 0 after). Over adb the phone-screen window now also uses the invisible PC keyboard while it has focus, as app windows already did (verified: switches to it on focus, back to Gboard on blur). |
+| Ctrl shortcuts | ✅ | Debug-free keys go to the app as real key events (Ctrl+A, Ctrl+Z, Ctrl+Backspace, Ctrl+arrows… handled by the app; verified Ctrl+A and Ctrl+Backspace). Ctrl+C / Ctrl+X put the selection on the PC's clipboard (verified). Fixed on the way: that clipboard event was written on the main thread, which closed the stream. |
 
 ## 2.8.5
 

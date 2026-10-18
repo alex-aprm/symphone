@@ -330,6 +330,9 @@ class ScreenStream(private val hello: JSONObject, private val out: StreamServer.
         vd = p.createVirtualDisplay("Symphone cast", size.width, size.height, dpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, enc!!.surface, null, h)
         dm.registerDisplayListener(listener, h)
+        // (called on the main thread, where sockets can't be written: the stream's own thread sends it)
+        ControlService.clipSink = { t -> h.post { out.event(JSONObject().put("type", "clipboard").put("text", t)) } }
+        ControlService.hideKeyboard = true          // typing comes from the PC: no keyboard over the picture
         return JSONObject().put("ok", true).put("width", size.width).put("height", size.height).put("codec", enc!!.name)
             .put("device", Build.MODEL).put("control", ControlService.instance != null)
     }
@@ -367,6 +370,8 @@ class ScreenStream(private val hello: JSONObject, private val out: StreamServer.
     }
 
     override fun stop() {
+        ControlService.clipSink = null
+        ControlService.hideKeyboard = false
         try { dm.unregisterDisplayListener(listener) } catch (_: Exception) {}
         try { vd?.release() } catch (_: Exception) {}
         enc?.release()

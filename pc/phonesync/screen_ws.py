@@ -625,7 +625,7 @@ async def handle_input(s: sc.ScrcpySession, m: dict, wid: str | None = None):
             await s.set_clipboard(text, paste=bool(m.get("paste")))
     elif t == "focus":
         s.ps_focused = bool(m.get("on"))
-        if kbd and getattr(s, "ps_kind", "") in ("app", "desktop"):
+        if kbd and _kbd_window(s):
             kbd.sessions_changed()
             if s.ps_focused:
                 asyncio.ensure_future(kbd.ensure())
@@ -664,8 +664,14 @@ _IME_KEYS = {"ENTER", "DEL", "FORWARD_DEL", "TAB", "DPAD_UP", "DPAD_DOWN", "DPAD
 
 
 def _typing(s) -> bool:
-    """Keys of this window go through the phone's PC keyboard (virtual displays only)."""
-    return kbd is not None and kbd.enabled and getattr(s, "ps_kind", "") in ("app", "desktop")
+    """Keys of this window go through the phone's PC keyboard (app windows, the phone desktop, and the phone's own
+    screen over adb: the phone's on-screen keyboard stays down while the PC types)."""
+    return kbd is not None and kbd.enabled and _kbd_window(s)
+
+
+def _kbd_window(s) -> bool:
+    kind = getattr(s, "ps_kind", "")
+    return kind in ("app", "desktop") or kind == "screen" and not getattr(s, "cast", False)
 
 
 async def rotate(s: sc.ScrcpySession, r=None):

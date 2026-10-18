@@ -93,6 +93,9 @@ class CastSession(ScrcpySession):
                             self.on_size(size)
                         else:
                             self._emit(size)
+                    elif ev.get("type") == "clipboard":      # Ctrl+C / Ctrl+X in a phone field
+                        if self.on_clipboard:
+                            self.on_clipboard(str(ev.get("text", "")))
                     elif ev.get("type") == "ended":
                         log.info("cast ended: %s", ev.get("reason"))
                         break

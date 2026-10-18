@@ -49,6 +49,10 @@ class PcKeyboard:
         pkgs, any_app = set(), False
         for s in screen_ws.sessions:
             kind = getattr(s, "ps_kind", "")
+            if kind == "screen" and not getattr(s, "cast", False):
+                if getattr(s, "ps_focused", False):
+                    any_app = True               # the phone's own screen, typed into from the PC right now
+                continue
             if s.virtual_display_id is None or getattr(s, "ps_shown", True) is False:
                 continue
             if kind == "app":
