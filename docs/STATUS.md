@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.0** (Windows app; phone app 2.8.0, versionCode 15).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.2** (Windows app; phone app 2.8.2, versionCode 16).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
