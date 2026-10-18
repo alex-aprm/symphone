@@ -64,7 +64,7 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 
 | Request | Status | Notes |
 |---|---|---|
-| Unlock the phone with a nearby device | ☑️ | Android's own Extend Unlock (Smart Lock) with this PC as a *trusted device*: while the PC is connected over Bluetooth, the phone doesn't ask for its PIN. Android doesn't let apps add trusted devices, so the user adds the PC once on the phone (Settings › Connection › *Keep the phone unlocked near this PC* › *Set up on phone* opens that screen). Symphone keeps the Bluetooth link up: the PC holds an authenticated RFCOMM connection to the phone app (keep-alives, reconnects). Verified: link comes up by itself (paired PC ↔ nubia). The trusted-device step itself needs the user. |
+| Unlock the phone with a nearby device | ❌ | Removed again (Extend Unlock integration dropped from both apps): opening Google's Extend Unlock screen from Symphone left a "Something came up. The application has cancelled the request to choose a device" dialog on the phone. Add the PC as a trusted device in the phone's own settings if wanted. |
 
 ## 2.7.5
 

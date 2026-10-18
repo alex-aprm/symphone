@@ -87,10 +87,6 @@ object Api {
                 main.post { Hub.ctx.startActivity(i) }
                 resp.json(JSONObject().put("ok", true))
             }
-            "trust" -> {       // opens Android's Extend Unlock (Smart Lock) settings, where the PC becomes a trusted device
-                main.post { openTrustSettings() }
-                resp.json(JSONObject().put("ok", true))
-            }
             "sidecar" -> {     // debugging-free side display: open the phone's display screen (shows over the lock screen)
                 val o = try { JSONObject(req.bodyText()).optString("orientation", "landscape") } catch (_: Exception) { "landscape" }
                 val i = Intent(Hub.ctx, SidecarActivity::class.java)
@@ -203,17 +199,6 @@ object Api {
 
     private fun hex(h: String): ByteArray = ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
 
-    /** Extend Unlock lives in Google Play services; its screen has moved between versions, so try the known ones. */
-    private fun openTrustSettings() {
-        val tries = listOf(
-            Intent().setClassName("com.google.android.gms", "com.google.android.gms.trustagent.GoogleTrustAgentPersonalUnlockingSettings"),
-            Intent("com.google.android.gms.trustagent.trustlet.TrustletManagerSettings"),
-            Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS))
-        for (i in tries) {
-            try { Hub.ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return } catch (_: Exception) {}
-        }
-    }
-
     /** Optional "display" (int >= 0) of /api/notif/act and /api/launch. */
     private fun displayParam(b: JSONObject): Int? =
         if (b.has("display") && !b.isNull("display")) b.optInt("display", -1).takeIf { it >= 0 } else null
@@ -232,8 +217,6 @@ object Api {
             .put("screenOn", pm.isInteractive).put("locked", km.isKeyguardLocked)
             .put("wifiIp", Discovery.wifiIp() ?: "")
             .put("wfdIp", WfdClient.network?.let { WfdClient.myIp(it) } ?: "")
-            .put("btLink", org.json.JSONArray(BtLink.connected()))
-            .put("btName", try { Hub.ctx.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter?.name ?: "" } catch (_: SecurityException) { "" })
             .put("staConcurrency", WfdClient.concurrent)
             .put("notifAccess", NotifListener.instance != null)
             .put("allFiles", android.os.Environment.isExternalStorageManager())

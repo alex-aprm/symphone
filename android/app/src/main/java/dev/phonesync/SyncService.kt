@@ -46,7 +46,6 @@ class SyncService : Service() {
         wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "phonesync").apply {
             setReferenceCounted(false); acquire()
         }
-        BtLink.start()          // the PC's Bluetooth link ("keep the phone unlocked near this PC")
 
         try { server.start() } catch (e: Exception) { Log.e("Symphone", "server: $e") }
         try { StreamServer.start() } catch (e: Exception) { Log.e("Symphone", "streams: $e") }

@@ -64,10 +64,6 @@ def build_app(core) -> web.Application:
         return j({"ok": True})
     r.add_post("/api/screen/open", screen_open)
 
-    async def phone_trust(req):
-        """Opens Extend Unlock (Smart Lock) on the phone, where the user adds this PC as a trusted device."""
-        return await guard(lambda: _json(core.phone.post_json("/api/trust", {}, timeout=5)))
-    r.add_post("/api/phone/trust", phone_trust)
 
     async def index(req):
         return web.FileResponse(UI_DIR / "index.html", headers={"Cache-Control": "no-cache"})
@@ -297,7 +293,7 @@ def build_app(core) -> web.Application:
                    "toasts", "toast_muted_apps", "mirror_max_size", "mirror_bitrate", "mirror_fps",
                    "mirror_wifi_bitrate", "mirror_wifi_fps",
                    "turn_screen_off", "autostart", "mirror_audio", "drive_mode", "display_name", "pc_name",
-                   "clipboard_sync", "pc_keyboard", "transfer_toasts", "ble", "bt_unlock", "wifi_direct", "wfd_prefer", "sidecar_orientation", "sidecar_scale", "sidecar_size", "sidecar_size_auto"}
+                   "clipboard_sync", "pc_keyboard", "transfer_toasts", "ble", "wifi_direct", "wfd_prefer", "sidecar_orientation", "sidecar_scale", "sidecar_size", "sidecar_size_auto"}
         upd = {k: v for k, v in b.items() if k in allowed}
         if "pin" in b:
             settings.set_pin(str(b["pin"]).strip())
