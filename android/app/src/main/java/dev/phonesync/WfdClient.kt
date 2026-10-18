@@ -14,15 +14,21 @@ import java.util.concurrent.TimeUnit
  * Wi-Fi Direct link. When the PC prefers it (Wfd.prefer) and this phone can stay on its own Wi-Fi at the same time
  * (STA + STA concurrency for local-only connections), the phone keeps the PC's direct network joined all the time:
  * a one-hop link that doesn't depend on the router. Otherwise it is a fallback: the PC hosts a Wi-Fi Direct "legacy" network (SSID + WPA2 passphrase, registered with
- * POST /api/pc/wfd or taken from the pairing QR). When the phone is on no Wi-Fi at all, or the master PC's hellos
- * failed 3 times in a row, the phone requests that network with a WifiNetworkSpecifier (nothing is bound
- * process-wide) and says hello to the PC at 192.168.137.1:47801 over it. Released as soon as the LAN works again.
+ * POST /api/pc/wfd or taken from the pairing QR). When the phone has been on no Wi-Fi at all for a while, the phone
+ * requests that network with a WifiNetworkSpecifier (nothing is bound process-wide) and says hello to the PC at
+ * 192.168.137.1:47801 over it. Released as soon as the LAN works again.
+ *
+ * Such a request opens Android's "choose a device" dialog over whatever is on screen, and cancelling it shows
+ * "Something came up". So it is never made just because hellos failed while the phone is on Wi-Fi (that happens
+ * after every unlock, before the LAN catches up), and is tried once per Wi-Fi outage.
  */
 object WfdClient {
     private const val TAG = "SymphoneWfd"
     const val HOST = "192.168.137.1"
     private const val JOIN_TIMEOUT = 45_000L
     private const val BACKOFF = 10 * 60_000L
+    /** How long the phone must be off Wi-Fi before it looks for the PC's direct network by itself. */
+    private const val NO_WIFI_GRACE = 2 * 60_000L
 
     @Volatile var network: Network? = null
         private set
@@ -33,6 +39,9 @@ object WfdClient {
     @Volatile private var joinLatch: CountDownLatch? = null
     /** A QR pairing is waiting on the network: automatic logic must not release it. */
     @Volatile private var joining = false
+    @Volatile private var noWifiSince = 0L
+    /** Already tried by itself during this Wi-Fi outage. */
+    @Volatile private var autoTried = false
 
     private val cm by lazy { Hub.ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
 
@@ -65,10 +74,14 @@ object WfdClient {
             if (held == null || held.wfd == null) release("pc gone or no wfd")
             return
         }
+        val now = System.currentTimeMillis()
+        if (Arrival.wifiNetwork != null) { noWifiSince = 0; autoTried = false }
+        else if (noWifiSince == 0L) noWifiSince = now
         val m = Pcs.master
-        val w = m?.wfd
-        val noLan = Arrival.wifiNetwork == null || Arrival.masterFails.get() >= 3
-        if (w != null && (noLan || preferred(w)) && System.currentTimeMillis() - failedAt > BACKOFF) request(w, m.id)
+        val w = m?.wfd ?: return
+        val noLan = noWifiSince != 0L && now - noWifiSince >= NO_WIFI_GRACE && !autoTried
+        if (preferred(w) && now - failedAt > BACKOFF) request(w, m.id)
+        else if (noLan) { autoTried = true; request(w, m.id) }
     }
 
     /** The regular LAN path to the master works: drop the direct link (unless it is the preferred one). */

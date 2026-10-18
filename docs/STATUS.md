@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.9** (Windows app; phone app 2.8.6, versionCode 19).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.9.0** (Windows app and phone app 2.9.0, versionCode 20).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,12 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.9.0
+
+| Request | Status | Notes |
+|---|---|---|
+| "Something came up… cancelled the request to choose a device" after unlock; "Searching for device" over apps | ✅ | Not the removed smart unlock: the phone's Wi-Fi Direct fallback asked Android for the PC's direct network whenever 3 hellos failed (as they do right after unlock), which opens the system "choose a device" dialog; the LAN answered a moment later, the request was cancelled and the dialog said so. Now the fallback only starts after 2 minutes with no Wi-Fi at all, once per outage. Verified: sleep + wake no longer opens the dialog. |
 
 ## 2.8.9
 
