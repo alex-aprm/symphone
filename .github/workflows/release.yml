@@ -40,7 +40,7 @@ jobs:
           git apply "$GITHUB_WORKSPACE/scrcpy/symphone-server.patch"
           ./gradlew :server:assembleRelease --no-daemon
           cp server/build/outputs/apk/release/server-release-unsigned.apk "$GITHUB_WORKSPACE/scrcpy-server"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: scrcpy-server
           path: scrcpy-server
@@ -54,11 +54,11 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: apk
           path: dist
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: scrcpy-server
           path: server
@@ -109,7 +109,7 @@ jobs:
           "files=Symphone-Setup-$ver.exe Symphone-Setup.exe Symphone-$ver-windows-x64.zip Symphone-$ver.apk Symphone.apk" >> $env:GITHUB_OUTPUT
           "ver=$ver" >> $env:GITHUB_OUTPUT
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: symphone-windows
           path: |
@@ -138,11 +138,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: apk
           path: dist
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: scrcpy-server
           path: server
@@ -170,7 +170,7 @@ jobs:
           sh pc/build.sh "$ver"
           ls -la dist
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: symphone-${{ matrix.name }}
           path: |
@@ -183,7 +183,7 @@ jobs:
     needs: [windows, posix]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           pattern: symphone-*
           path: out
