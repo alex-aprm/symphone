@@ -7,6 +7,7 @@ transfers only report when they finish.
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -18,13 +19,36 @@ log = logging.getLogger("notify")
 IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
 
 
-def register_aumid(icon: Path):
+def register_aumid(icon: Path, aumid: str = AUMID, name: str = APP_NAME):
     import winreg
-    key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{AUMID}")
-    winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_NAME)
+    key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\AppUserModelId\{aumid}")
+    winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, name)
     winreg.SetValueEx(key, "IconUri", 0, winreg.REG_SZ, str(icon))
     winreg.SetValueEx(key, "IconBackgroundColor", 0, winreg.REG_SZ, "FF1F6FEB")
     winreg.CloseKey(key)
+
+
+def app_aumid(pkg: str) -> str:
+    """Toast sender for one phone app: Windows heads a toast with its sender's name and icon (and lists each sender
+    in its notification settings), so a WhatsApp message says WhatsApp instead of Symphone."""
+    return f"{AUMID}.App.{re.sub(r'[^A-Za-z0-9.]', '_', pkg)[:96]}"
+
+
+def unregister_app_aumids():
+    """Uninstaller: remove the per-app toast senders."""
+    import winreg
+    base = r"Software\Classes\AppUserModelId"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, base) as k:
+            names = [winreg.EnumKey(k, i) for i in range(winreg.QueryInfoKey(k)[0])]
+    except OSError:
+        return
+    for n in names:
+        if n.startswith(f"{AUMID}.App."):
+            try:
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, rf"{base}\{n}")
+            except OSError:
+                pass
 
 
 def _tag(key: str) -> str:
@@ -103,6 +127,8 @@ class _Base:
         return await self.app.open_notification(key, phone)
 
     def _activated(self, phone, key, n, arg, inputs):
+        self._acted(key)
+
         async def go():
             core = self.app
             if arg in ("", "open") or arg.startswith("phonesync:"):
@@ -117,6 +143,23 @@ class _Base:
                 await core.answer_call_on_pc(n)
         if self.loop:
             asyncio.run_coroutine_threadsafe(go(), self.loop)
+
+    def _acted(self, key: str):
+        """A toast that was clicked leaves Action Center by itself: that isn't a dismissal."""
+
+    def dismissed(self, phone, key: str, n: dict):
+        """The user dismissed the toast on the PC: dismiss the notification on the phone too (calls and notifications
+        the phone doesn't let you clear stay)."""
+        self.shown.pop(key, None)
+        if n.get("call") or not n.get("clearable", True) or not self.loop:
+            return
+
+        async def go():
+            try:
+                await phone.post_json("/api/notif/act", {"key": key, "op": "dismiss"}, timeout=5)
+            except Exception as e:
+                log.debug("dismiss on phone: %s", e)
+        asyncio.run_coroutine_threadsafe(go(), self.loop)
 
     # ------------------------------------------------------------------ file notifications
     def received(self, dest: Path, phone_name: str):
@@ -175,6 +218,70 @@ class WindowsNotifier(_Base):
             log.warning("aumid: %s", e)
         self.toaster = InteractableWindowsToaster(APP_NAME, AUMID)
         self._seq = 0
+        self._app_toasters: dict[str, object] = {}       # pkg -> toaster under that app's own sender
+        self._in_center: set[str] = set()                # keys whose toast was seen in Action Center
+
+    def bind(self, loop):
+        super().bind(loop)
+        loop.create_task(self._watch_center())
+
+    async def _app_toaster(self, n: dict, phone):
+        """The phone app's own toast sender (name + icon), registered the first time it notifies."""
+        from windows_toasts import InteractableWindowsToaster
+        pkg, name = n.get("pkg") or "", n.get("app") or ""
+        if not pkg or not name:
+            return self.toaster
+        t = self._app_toasters.get(pkg)
+        if t is not None and t.applicationText == name:
+            return t
+        icon = ICON_DIR / f"{pkg}.png"
+        try:
+            if not icon.exists():
+                icon.write_bytes(await phone.get_bytes(f"/api/icon/{pkg}"))
+        except Exception:
+            icon = BASE_DIR / "ui" / "icon.png"
+        try:
+            register_aumid(icon, app_aumid(pkg), name)
+            t = InteractableWindowsToaster(name, app_aumid(pkg))
+        except Exception as e:
+            log.warning("toast sender for %s: %s", pkg, e)
+            return self.toaster
+        self._app_toasters[pkg] = t
+        return t
+
+    def _acted(self, key: str):
+        self._in_center.discard(key)
+
+    def _on_dismissed(self, phone, key, n, args):
+        from windows_toasts import ToastDismissalReason
+        try:
+            if args.reason != ToastDismissalReason.USER_CANCELED:      # timed out (into Action Center) / replaced
+                return
+        except Exception:
+            return
+        if self.loop:
+            self.loop.call_soon_threadsafe(self.dismissed, phone, key, n)
+
+    async def _watch_center(self):
+        """Clearing a toast in Action Center raises no event: a toast that was there and is gone was cleared."""
+        from winrt.windows.ui.notifications import ToastNotificationManager
+        while True:
+            await asyncio.sleep(4)
+            if not self.shown:
+                continue
+            try:
+                there = set()
+                for aumid in {item[2].notifierAUMID for item in self.shown.values()}:
+                    there |= {(aumid, t.tag) for t in ToastNotificationManager.history.get_history_with_id(aumid)}
+            except Exception as e:
+                log.debug("action center: %s", e)
+                continue
+            for key, (toast, _sig, toaster, phone, n) in list(self.shown.items()):
+                if (toaster.notifierAUMID, toast.tag) in there:
+                    self._in_center.add(key)
+                elif key in self._in_center:
+                    self._in_center.discard(key)
+                    self.dismissed(phone, key, n)
 
     async def show(self, n: dict, phone):
         from windows_toasts import (Toast, ToastButton, ToastDisplayImage, ToastImagePosition, ToastInputTextBox,
@@ -185,7 +292,12 @@ class WindowsNotifier(_Base):
         toast = Toast(text_fields=[n.get("title") or n.get("app"), self._body(n)])
         toast.tag = _tag(n["key"])
         toast.group = "phone"
-        toast.attribution_text = self._attribution(n, phone)
+        # the app's name heads the toast (its own sender); with several phones, which one it came from
+        toaster = await self._app_toaster(n, phone)
+        if toaster is self.toaster:
+            toast.attribution_text = self._attribution(n, phone)
+        elif len(self.app.hub.phones) > 1:
+            toast.attribution_text = phone.name
         icon = await self._icon_file(n, phone)
         if icon:
             toast.AddImage(ToastDisplayImage.fromPath(icon, position=ToastImagePosition.AppLogo, circleCrop=bool(n.get("hasIcon"))))
@@ -213,17 +325,23 @@ class WindowsNotifier(_Base):
         toast.launch_action = "phonesync://notif/?" + urlencode({"dev": phone.dev_id, "key": key})
         toast.on_activated = lambda args, key=key, n=n, phone=phone: self._activated(phone, key, n, args.arguments or "",
                                                                                     args.inputs or {})
+        toast.on_dismissed = lambda args, key=key, n=n, phone=phone: self._on_dismissed(phone, key, n, args)
+        prev = self.shown.get(key)
+        if prev and prev[2] is not toaster:               # the app's sender changed (renamed app): move it
+            self.remove(key)
         try:
-            self.toaster.show_toast(toast)
-            self.shown[key] = (toast, sig)
+            toaster.show_toast(toast)
+            self.shown[key] = (toast, sig, toaster, phone, n)
         except Exception as e:
             log.warning("toast: %s", e)
 
     def remove(self, key: str):
+        """The notification went away on the phone."""
         item = self.shown.pop(key, None)
+        self._in_center.discard(key)
         if item:
             try:
-                self.toaster.remove_toast(item[0])
+                item[2].remove_toast(item[0])
             except Exception:
                 pass
 

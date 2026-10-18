@@ -223,6 +223,8 @@ def cleanup():
         except OSError:
             pass
     unregister_phone_folder()
+    from .notify import unregister_app_aumids
+    unregister_app_aumids()
     ns = r"Software\Classes\CLSID" + "\\" + PHONE_NS_CLSID
     for key in (r"Software\Classes\phonesync\shell\open\command", r"Software\Classes\phonesync\shell\open",
                 r"Software\Classes\phonesync\shell", r"Software\Classes\phonesync",

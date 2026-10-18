@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.4** (Windows app; phone app 2.8.4, versionCode 18).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.5** (Windows app; phone app 2.8.4, versionCode 18).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,13 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.8.5
+
+| Request | Status | Notes |
+|---|---|---|
+| Dismissing a notification on the PC dismisses it on the phone | ✅ | Closing the toast (Windows reports "user canceled") or clearing it in Action Center (seen there, then gone: Windows raises no event for that, so Symphone checks every 4 s) dismisses it on the phone. Clicked toasts, calls and notifications the phone doesn't let you clear are left alone. Verified: a test notification cleared from Action Center disappeared from the phone. |
+| Toast says "Symphone" instead of the app | ✅ | Each phone app gets its own Windows toast sender (name + icon, registered when it first notifies), so the toast is headed by the app's name and Windows' notification settings list the apps separately. The uninstaller removes them. |
 
 ## 2.8.4 (2.8.3 was not released)
 
