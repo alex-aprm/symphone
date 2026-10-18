@@ -21,12 +21,13 @@ CAST_PORT = 47904
 class CastSession(ScrcpySession):
     def __init__(self, host: str, token: str, kind: str = "screen", *, port: int = CAST_PORT, max_size: int = 1920,
                  fps: int = 60, bitrate: int = 8_000_000, camera_id: str = "", facing: str = "back",
-                 audio: str = "playback"):
+                 audio: str = "playback", codec: str = "h264"):
         super().__init__("", video_source="camera" if kind == "camera" else "display", max_size=max_size,
                          max_fps=fps, video_bit_rate=bitrate, camera_id=camera_id or None, camera_facing=facing)
         self.host, self.cport, self.token, self.kind = host, port, token, kind
         self.hello = {"token": token, "kind": kind, "max_size": max_size, "fps": fps, "bitrate": bitrate,
-                      "camera": camera_id, "facing": facing, "audio": audio}
+                      "camera": camera_id, "facing": facing, "audio": audio,
+                      "codec": codec}         # "h265": the phone uses it if it can (the reply says what it sent)
         self.on_audio = None            # callable(pts_us, pcm bytes)  (kind="audio")
         self.cast = True
 

@@ -17,7 +17,7 @@ const POINTER_GENERIC_FINGER = -2;
 const MAX_DECODE_QUEUE = 8;            // frames; ~130 ms at 60 fps
 const BACKLOG_RESYNC_MS = 500;         // ...for this long before resyncing: a burst from Wi-Fi decodes in a few ms
 // Playout delay cap (ms) for smoothing network jitter; ?jitter=0 draws every frame as soon as it is decoded
-const JITTER_MAX = Math.max(0, +(P.get('jitter') ?? 60) || 0);
+const JITTER_MAX = Math.max(0, +(P.get('jitter') ?? 30) || 0);
 const MAX_HELD = 4;                    // decoded frames waiting for their display time (decoders have few buffers)
 const A_DOWN = 0, A_UP = 1, A_MOVE = 2;
 
@@ -50,13 +50,29 @@ $('#toPhone').onclick = () => send({ t: 'cmd', c: 'to_phone' });
 // ------------------------------------------------------------------ connection
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
-function connect() {
+// H.265 when this PC decodes it in hardware: about the same picture for less data, so less Wi-Fi airtime (the
+// server only asks the phone for it on Wi-Fi). ?codec=h264 forces H.264; a decoder that fails falls back to it.
+const HEVC_CODEC = 'hev1.1.6.L153.B0';
+let hevcOk = KIND === 'camera' || P.get('codec') === 'h264' ? false : null;
+async function hevcSupported() {
+  if (hevcOk === null) {
+    try {
+      hevcOk = !!(await VideoDecoder.isConfigSupported({ codec: HEVC_CODEC, hardwareAcceleration: 'prefer-hardware',
+        optimizeForLatency: true })).supported;
+    } catch { hevcOk = false; }
+  }
+  return hevcOk;
+}
+
+async function connect() {
+  const hevc = 'VideoDecoder' in window && await hevcSupported();
   if (ws) { try { ws.onclose = null; ws.close(); } catch { } }
   closeDecoder();
   gotFrame = false; closedByError = false; needKey = true; lastConfig = pendingConfig = null;
   setStatus('Connecting…');
   const q = new URLSearchParams(P);
   q.delete('title'); q.delete('label');
+  if (hevc) q.set('codec', 'h265'); else q.delete('codec');
   // Virtual displays are created at the window's size and then follow it: the picture always fills the window.
   if (KIND !== 'camera') { const v = vdSize(); q.set('vd', `${v.w}x${v.h}`); }
   ws = new WebSocket(`ws://${location.host}/ws/screen?${q}`);
@@ -83,7 +99,7 @@ function onJson(m) {
     meta = m; fitted = false; setSize(m.width, m.height);
     if (document.hasFocus()) send({ t: 'focus', on: true });
     document.body.classList.toggle('virtual', (m.display || '').startsWith('virtual'));
-    if (m.codec !== 'h264') setStatus(`Codec ${m.codec} is not supported by the viewer (use h264)`, true);
+    if (m.codec !== 'h264' && m.codec !== 'h265') setStatus(`Codec ${m.codec} is not supported by the viewer`, true);
     else setStatus('Waiting for video…');
   } else if (m.type === 'size') {
     const flipped = vw && (vw > vh) !== (m.width > m.height);
@@ -108,6 +124,7 @@ function onJson(m) {
 
 // ------------------------------------------------------------------ video
 function codecFromConfig(data) {
+  if (meta.codec === 'h265') return HEVC_CODEC;      // Annex B with in-band VPS/SPS/PPS: the generic string decodes
   // find the SPS (nal type 7) after an Annex B start code: avc1.PPCCLL
   for (let i = 0; i + 4 < data.length; i++) {
     if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1 && (data[i + 3] & 0x1f) === 7) {
@@ -131,7 +148,9 @@ function makeDecoder(codec) {
     output: onFrame,
     error: e => {
       console.warn('decoder error', e); st.decErr++;
-      decoder = null; needKey = true; requestKeyframe();
+      decoder = null; needKey = true;
+      if (codec === HEVC_CODEC && (!gotFrame || st.decErr >= 3)) { hevcOk = false; connect(); return; }   // back to H.264
+      requestKeyframe();
     },
   });
   configuredAt = performance.now(); backlogSince = 0;
@@ -234,7 +253,10 @@ function onFrame(frame) {
   const due = pacer.due(frame.timestamp, now);
   if (due <= now && !held.length) { draw(frame); return; }       // on time (USB, calm Wi-Fi): no added latency
   held.push({ frame, due });
-  while (held.length > MAX_HELD) { held.shift().frame.close(); st.skipped++; }
+  // More frames waiting than the decoder can lend out: the playout delay is longer than this frame rate allows.
+  // Dropping the oldest would starve the screen (the frames left are all due later, and are pushed out in turn), so
+  // the oldest is shown now: the delay is then capped at MAX_HELD frames.
+  if (held.length > MAX_HELD) draw(held.shift().frame);
   if (!presentRaf) presentRaf = requestAnimationFrame(present);
 }
 

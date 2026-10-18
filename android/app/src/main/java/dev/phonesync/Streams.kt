@@ -208,34 +208,60 @@ object WifiPerf {
     }
 }
 
-/** H.264 encoder fed through an input surface; packets go to [out]. */
-class VideoEncoder(w: Int, h: Int, fps: Int, bitrate: Int, private val out: StreamServer.Out) {
-    val codec: MediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+/** H.264 or H.265 encoder fed through an input surface; packets go to [out]. [hevc]: H.265 if the phone can encode
+ *  it (about the same picture for less data than H.264, so less Wi-Fi airtime); [name] says what it ended up being. */
+class VideoEncoder(w: Int, h: Int, fps: Int, bitrate: Int, private val out: StreamServer.Out, hevc: Boolean = false) {
+    val codec: MediaCodec
+    val name: String
     val surface: Surface
     @Volatile private var running = true
     private val drainer: Thread
 
     init {
-        val f = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
-            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
-            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000)       // static screens keep a frame flow
-            setInteger(MediaFormat.KEY_PRIORITY, 0)
-            if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
-            setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel42)
+        var c: MediaCodec? = null
+        if (hevc) {
+            try {
+                c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+                c.configure(format(MediaFormat.MIMETYPE_VIDEO_HEVC, w, h, fps, bitrate).apply {
+                    setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain)
+                }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            } catch (e: Exception) {
+                Log.i("SymphoneStream", "no H.265 encoder ($e): H.264")
+                try { c?.release() } catch (_: Exception) {}
+                c = null
+            }
         }
-        try {
-            codec.configure(f, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        } catch (e: Exception) {                     // profile/level not supported: plain baseline settings
-            f.removeKey(MediaFormat.KEY_PROFILE); f.removeKey(MediaFormat.KEY_LEVEL)
-            codec.configure(f, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        }
+        if (c == null) {
+            c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            val f = format(MediaFormat.MIMETYPE_VIDEO_AVC, w, h, fps, bitrate).apply {
+                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
+                setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel42)
+            }
+            try {
+                c.configure(f, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            } catch (e: Exception) {                 // profile/level not supported: plain baseline settings
+                f.removeKey(MediaFormat.KEY_PROFILE); f.removeKey(MediaFormat.KEY_LEVEL)
+                c.configure(f, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            }
+            name = "h264"
+        } else name = "h265"
+        codec = c
         surface = codec.createInputSurface()
         codec.start()
         drainer = thread(name = "enc-drain", isDaemon = true) { drain() }
+    }
+
+    private fun format(mime: String, w: Int, h: Int, fps: Int, bitrate: Int) = MediaFormat.createVideoFormat(mime, w, h).apply {
+        setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+        setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
+        setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+        // The display composes at the panel's rate (120-144 Hz): without a cap the encoder gets every composition,
+        // so the bitrate is spread over twice the frames and the viewer gets more frames than it can show.
+        setFloat("max-fps-to-encoder", fps.toFloat())
+        setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
+        setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000)       // static screens keep a frame flow
+        setInteger(MediaFormat.KEY_PRIORITY, 0)
+        if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
     }
 
     private fun drain() {
@@ -277,6 +303,7 @@ class ScreenStream(private val hello: JSONObject, private val out: StreamServer.
     private val fps = hello.optInt("fps", 60).coerceIn(15, 120)
     private val bitrate = hello.optInt("bitrate", 8_000_000)
     private val maxSize = hello.optInt("max_size", 1920)
+    private val hevc = hello.optString("codec") == "h265"
     private var size = Size(0, 0)
     private val dm = Hub.ctx.getSystemService(DisplayManager::class.java)
     private val ht = HandlerThread("cast").apply { start() }
@@ -295,7 +322,7 @@ class ScreenStream(private val hello: JSONObject, private val out: StreamServer.
             .put("error", Projection.lastError)
         projection = p
         size = target()
-        enc = VideoEncoder(size.width, size.height, fps, bitrate, out)
+        enc = VideoEncoder(size.width, size.height, fps, bitrate, out, hevc)
         val dpi = Hub.ctx.resources.displayMetrics.densityDpi
         p.registerCallback(object : MediaProjection.Callback() {     // 14+: before createVirtualDisplay
             override fun onStop() { out.ended("casting stopped on the phone") }
@@ -303,7 +330,7 @@ class ScreenStream(private val hello: JSONObject, private val out: StreamServer.
         vd = p.createVirtualDisplay("Symphone cast", size.width, size.height, dpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, enc!!.surface, null, h)
         dm.registerDisplayListener(listener, h)
-        return JSONObject().put("ok", true).put("width", size.width).put("height", size.height).put("codec", "h264")
+        return JSONObject().put("ok", true).put("width", size.width).put("height", size.height).put("codec", enc!!.name)
             .put("device", Build.MODEL).put("control", ControlService.instance != null)
     }
 
@@ -318,7 +345,7 @@ class ScreenStream(private val hello: JSONObject, private val out: StreamServer.
             size = t
             out.event(JSONObject().put("type", "size").put("width", t.width).put("height", t.height))
             val old = enc
-            val e = VideoEncoder(t.width, t.height, fps, bitrate, out)
+            val e = VideoEncoder(t.width, t.height, fps, bitrate, out, hevc)
             enc = e
             vd?.resize(t.width, t.height, Hub.ctx.resources.displayMetrics.densityDpi)
             vd?.surface = e.surface

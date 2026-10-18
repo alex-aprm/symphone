@@ -129,6 +129,12 @@ def stream_quality(wifi: bool) -> tuple[str, int]:
     return settings["mirror_bitrate"] or "8M", min(int(settings["mirror_fps"] or 60), 120)
 
 
+def _codec(q) -> str:
+    """H.265 when the viewer can decode it (it says so with ?codec=h265): on Wi-Fi the same picture for less data.
+    Over USB bandwidth is plentiful and H.264 encoders start faster, so only Wi-Fi streams use it."""
+    return "h265" if q.get("codec") == "h265" else "h264"
+
+
 async def session_options(serial: str, q) -> tuple[dict, str]:
     """Maps viewer query params to ScrcpySession kwargs. Returns (kwargs, display description)."""
     kind = q.get("kind", "screen")
@@ -138,6 +144,8 @@ async def session_options(serial: str, q) -> tuple[dict, str]:
     kw = dict(video_bit_rate=q.get("bitrate") or bitrate, max_fps=int(q.get("fps") or fps),
               max_size=max_size, power_on=False, stay_awake=False, audio=False, control=True,
               video_codec_options=q.get("codec_options") or DEFAULT_CODEC_OPTIONS or None)
+    if wireless(serial) and kind != "camera":
+        kw["video_codec"] = _codec(q)
     if kind == "camera":
         kw.update(video_source="camera", camera_facing=q.get("facing", "back"), camera_ar=q.get("ar", "4:3"),
                   camera_fps=int(q.get("camera_fps", 30)), max_size=int(q.get("max_size") or 1920),
@@ -192,7 +200,8 @@ async def cast_session(core, q):
                            facing=q.get("facing", "back"))
         return sess, f"camera ({q.get('facing', 'back')})"
     bitrate, fps = stream_quality(True)
-    sess = CastSession(host, phone.token, "screen", max_size=max_size, fps=fps, bitrate=sc._bitrate(bitrate))
+    sess = CastSession(host, phone.token, "screen", max_size=max_size, fps=fps, bitrate=sc._bitrate(bitrate),
+                       codec=_codec(q))
     if kind == "app" and q.get("pkg"):
         sess.start_app = q.get("pkg")
     return sess, "phone screen (casting)"
