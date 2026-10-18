@@ -40,7 +40,7 @@ from urllib.parse import urlencode
 from aiohttp import web, WSMsgType
 
 from . import scrcpy_client as sc
-from .config import UI_PORT, settings
+from .config import IS_WIN, UI_PORT, settings
 from .pckeyboard import PcKeyboard
 
 log = logging.getLogger("screen")
@@ -763,6 +763,7 @@ async def open_window(kind: str = "screen", *, port: int = UI_PORT, **params):
         try:
             await asyncio.to_thread(w.restore)
             await asyncio.to_thread(w.show)
+            await asyncio.to_thread(_to_front, w.title)
             return w
         except Exception:
             _windows.pop(key, None)
@@ -789,4 +790,24 @@ async def open_window(kind: str = "screen", *, port: int = UI_PORT, **params):
         return win
     w = await asyncio.to_thread(create)
     _windows[key] = w
+    # opened from a notification click / hotkey: the new window should be the active one, not behind the others
+    asyncio.get_running_loop().run_in_executor(None, _to_front, title, 5.0)
     return w
+
+
+def _to_front(title: str, wait: float = 0.0):
+    """Activates this app's window `title` (waits up to `wait` s for it to appear). Windows only."""
+    if not IS_WIN:
+        return
+    from . import winutil
+    end = time.time() + wait
+    while True:
+        try:
+            if winutil.bring_to_front(title):
+                return
+        except Exception as e:
+            log.debug("to front: %s", e)
+            return
+        if time.time() >= end:
+            return
+        time.sleep(0.15)

@@ -11,6 +11,7 @@ from pathlib import Path
 log = logging.getLogger("win")
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+user32.GetForegroundWindow.restype = wintypes.HWND
 kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
 kernel32.GlobalLock.restype = ctypes.c_void_p
 kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
@@ -98,8 +99,32 @@ def bring_to_front(title: str) -> bool:
     hwnd = found[0]
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, 9)                    # SW_RESTORE
+    return force_foreground(hwnd)
+
+
+def force_foreground(hwnd) -> bool:
+    """Makes hwnd the active window. Windows only lets the process the user last interacted with do that; a click on
+    a toast (Windows' own window) doesn't count, so a window opened from it would stay behind. If the plain call is
+    refused: share input with the current foreground thread for the call, then fall back to a synthetic Alt tap (a
+    keyboard event lifts the restriction)."""
     user32.BringWindowToTop(hwnd)
-    return bool(user32.SetForegroundWindow(hwnd))
+    if user32.SetForegroundWindow(hwnd) and user32.GetForegroundWindow() == hwnd:
+        return True
+    fg = user32.GetForegroundWindow()
+    me = kernel32.GetCurrentThreadId()
+    other = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    if other and other != me and user32.AttachThreadInput(me, other, True):
+        try:
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+        finally:
+            user32.AttachThreadInput(me, other, False)
+    if user32.GetForegroundWindow() != hwnd:
+        VK_MENU, KEYUP = 0x12, 0x2
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.keybd_event(VK_MENU, 0, KEYUP, 0)
+        user32.SetForegroundWindow(hwnd)
+    return user32.GetForegroundWindow() == hwnd
 
 
 def get_clipboard() -> str:
