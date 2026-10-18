@@ -117,6 +117,68 @@ def keep_topmost(title: str) -> bool:
     return True
 
 
+class _GUID(ctypes.Structure):
+    _fields_ = [("d1", wintypes.DWORD), ("d2", wintypes.WORD), ("d3", wintypes.WORD), ("d4", ctypes.c_ubyte * 8)]
+
+    @classmethod
+    def parse(cls, s: str):
+        import uuid
+        u = uuid.UUID(s)
+        return cls(u.time_low, u.time_mid, u.time_hi_version, (ctypes.c_ubyte * 8)(*u.bytes[8:]))
+
+
+class _PROPERTYKEY(ctypes.Structure):
+    _fields_ = [("fmtid", _GUID), ("pid", wintypes.DWORD)]
+
+
+class _PROPVARIANT(ctypes.Structure):
+    _fields_ = [("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort), ("r3", ctypes.c_ushort),
+                ("val", ctypes.c_void_p), ("pad", ctypes.c_void_p)]
+
+
+_AUMID_FMT = "9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"      # PKEY_AppUserModel_*
+_IID_IPropertyStore = "886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"
+
+
+def set_window_identity(hwnd, aumid: str, icon: Path | None = None) -> bool:
+    """Gives a window its own taskbar button: its own AppUserModelID (windows group by it) and icon. Pinning such a
+    button is turned off (it couldn't be relaunched on its own)."""
+    ok = True
+    try:
+        shell32 = ctypes.windll.shell32
+        ole32 = ctypes.windll.ole32
+        ole32.CoInitialize(None)
+        store = ctypes.c_void_p()
+        iid = _GUID.parse(_IID_IPropertyStore)
+        if shell32.SHGetPropertyStoreForWindow(wintypes.HWND(hwnd), ctypes.byref(iid), ctypes.byref(store)) != 0:
+            return False
+        vtbl = ctypes.cast(ctypes.cast(store, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        set_value = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(_PROPERTYKEY),
+                                       ctypes.POINTER(_PROPVARIANT))(vtbl[6])
+        commit = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(vtbl[7])
+        release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl[2])
+        fmt = _GUID.parse(_AUMID_FMT)
+        try:
+            no_pin = _PROPVARIANT(vt=11, val=0xFFFF)                       # VT_BOOL VARIANT_TRUE
+            ok &= set_value(store, ctypes.byref(_PROPERTYKEY(fmt, 9)), ctypes.byref(no_pin)) == 0   # PreventPinning
+            text = ctypes.create_unicode_buffer(aumid)
+            pv = _PROPVARIANT(vt=31, val=ctypes.cast(text, ctypes.c_void_p).value)   # VT_LPWSTR
+            ok &= set_value(store, ctypes.byref(_PROPERTYKEY(fmt, 5)), ctypes.byref(pv)) == 0       # ID
+            ok &= commit(store) == 0
+        finally:
+            release(store)
+    except Exception as e:
+        log.debug("window identity: %s", e)
+        ok = False
+    if icon is not None and Path(icon).exists():
+        user32.LoadImageW.restype = wintypes.HANDLE
+        for size, which in ((0, 1), (16, 0)):                          # ICON_BIG (default size), ICON_SMALL
+            h = user32.LoadImageW(None, str(icon), 1, size, size, 0x10 | (0x40 if not size else 0))   # LR_LOADFROMFILE
+            if h:
+                user32.PostMessageW(wintypes.HWND(hwnd), 0x80, which, h)                   # WM_SETICON
+    return ok
+
+
 def force_foreground(hwnd) -> bool:
     """Makes hwnd the active window. Windows only lets the process the user last interacted with do that; a click on
     a toast (Windows' own window) doesn't count, so a window opened from it would stay behind. If the plain call is

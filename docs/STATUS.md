@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.8** (Windows app; phone app 2.8.6, versionCode 19).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.8.9** (Windows app; phone app 2.8.6, versionCode 19).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,14 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.8.9
+
+| Request | Status | Notes |
+|---|---|---|
+| Python icon on the taskbar | ✅ | Only when Symphone runs from source (python.exe, during testing); the installed Symphone.exe has its own icon. |
+| App / phone icons on the taskbar | ✅ | Each phone window gets its own taskbar button: its own AppUserModelID (the app's, shared with its toasts) and icon (the app's icon; the phone's picture for the phone window). Pinning those buttons is off (they can't be relaunched on their own). Verified on the taskbar. A separator between buttons isn't something the Windows taskbar has. |
+| Phone drawer next to Start (like Phone Link) | ❌ | The Start menu side panel ("companions") is only available to Microsoft's Phone Link: no public API for other apps. |
 
 ## 2.8.8
 

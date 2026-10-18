@@ -791,9 +791,63 @@ async def open_window(kind: str = "screen", *, port: int = UI_PORT, **params):
     w = await asyncio.to_thread(create)
     _windows[key] = w
     _start_pin_keeper()
+    if IS_WIN:
+        asyncio.get_running_loop().create_task(_taskbar_identity(kind, title, params))
     # opened from a notification click / hotkey: the new window should be the active one, not behind the others
     asyncio.get_running_loop().run_in_executor(None, _to_front, title, 5.0)
     return w
+
+
+async def _taskbar_identity(kind: str, title: str, params: dict):
+    """Each phone window gets its own taskbar button: an app window shows the app's icon, the phone window the
+    phone's picture (instead of all of them stacking under Symphone's icon)."""
+    from . import winutil
+    from .notify import app_aumid
+    from .config import AUMID, ICON_DIR
+    try:
+        icon = None
+        if kind == "app" and params.get("pkg"):
+            pkg = params["pkg"]
+            aumid = app_aumid(pkg)
+            png = ICON_DIR / f"{pkg}.png"
+            if not png.exists() and kbd is not None:
+                png.write_bytes(await kbd.core.phone.get_bytes(f"/api/icon/{pkg}"))
+            icon = await asyncio.to_thread(_ico, png, ICON_DIR / f"{pkg}.ico")
+        elif kind == "camera":
+            aumid = f"{AUMID}.Camera"
+        else:
+            aumid = f"{AUMID}.Phone"
+            if kbd is not None:
+                dev = kbd.core.hub.active.dev_id
+                icon = await asyncio.to_thread(_phone_ico, dev, ICON_DIR / f"phone_{dev}.ico")
+        for _ in range(50):                         # the window shows up a moment after create_window
+            hwnd = await asyncio.to_thread(winutil.find_window, title)
+            if hwnd:
+                await asyncio.to_thread(winutil.set_window_identity, hwnd, aumid, icon)
+                return
+            await asyncio.sleep(0.1)
+    except Exception as e:
+        log.debug("taskbar identity: %s", e)
+
+
+def _ico(png, ico):
+    """PNG -> .ico (taskbar sizes), cached."""
+    from PIL import Image
+    if not ico.exists() or ico.stat().st_mtime < png.stat().st_mtime:
+        Image.open(png).convert("RGBA").save(ico, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (256, 256)])
+    return ico
+
+
+def _phone_ico(dev: str, ico):
+    """The phone's picture (as on Symphone's home page), centred on a square, as an icon."""
+    from PIL import Image
+    from . import phonepic
+    img = phonepic.render(dev, 256).convert("RGBA")
+    sq = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+    img.thumbnail((256, 256))
+    sq.paste(img, ((256 - img.width) // 2, (256 - img.height) // 2), img)
+    sq.save(ico, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (256, 256)])
+    return ico
 
 
 _pin_keeper: asyncio.Task | None = None
