@@ -811,6 +811,7 @@ $("#mutedApps").onchange = e => {
 };
 
 // paired phones
+let forgetAsk = null;     // id of the phone whose "Remove?" bar is open (kept across re-renders)
 function renderPhones(s) {
   const el = $("#phoneList");
   if (el.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
@@ -819,13 +820,21 @@ function renderPhones(s) {
       <span class="row-text"><b>${esc(p.name)}</b><small><span class="dot ${p.connected ? "on" : ""}"></span>
         ${p.connected ? "Connected · " + esc(p.via) : "Offline"}${p.model ? " · " + esc(p.model) : ""}${p.master === false ? " · another PC is its main PC" : ""}</small></span>
       ${p.id === s.active ? `<span class="tag acc">Showing</span>` : `<button class="btn" data-pact="switch">Show</button>`}
-      <button class="icon-btn" data-pact="menu" title="More"><span class="ic">${G.more}</span></button></div>`).join("")
+      <button class="icon-btn" data-pact="menu" title="More"><span class="ic">${G.more}</span></button></div>` +
+    (p.id === forgetAsk ? `<div class="row" data-pid="${esc(p.id)}"><span class="ic row-ic" style="color:var(--bad)">${G.del}</span>
+      <span class="row-text"><b>Remove ${esc(p.name)}?</b><small>It disconnects from this PC; pair again any time.</small></span>
+      <button class="btn" data-pact="forget-no">Cancel</button><button class="btn accent" data-pact="forget-yes">Remove</button></div>` : "")).join("")
     || `<div class="row"><span class="ic row-ic">${G.phone}</span><span class="row-text"><b>No phones yet</b><small>Add one below</small></span></div>`;
 }
 $("#phoneList").addEventListener("click", async e => {
   const b = e.target.closest("[data-pact]"); if (!b) return;
   const row = b.closest("[data-pid]"); const id = row.dataset.pid; const p = (state.phones || []).find(x => x.id === id);
   if (b.dataset.pact === "switch") return api("/api/device", { op: "switch", id });
+  if (b.dataset.pact === "forget-no") { forgetAsk = null; return renderPhones(state); }
+  if (b.dataset.pact === "forget-yes") {
+    forgetAsk = null; renderPhones(state);
+    await api("/api/device", { op: "forget", id }); return toast(`${p?.name || "Phone"} removed`);
+  }
   if (b.dataset.pact === "menu") {
     e.stopPropagation();
     $$(".row-menu").forEach(m => m.remove());
@@ -862,18 +871,7 @@ $("#phoneList").addEventListener("click", async e => {
         await fetch(`/api/device/picture?dev=${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-PhoneSync": "1" } });
         pictureChanged();
       }
-      if (it.dataset.m === "forget") {
-        if (row.dataset.confirm) return;
-        row.dataset.confirm = 1;
-        const bar = document.createElement("div"); bar.className = "row";
-        bar.innerHTML = `<span class="ic row-ic" style="color:var(--bad)">${G.del}</span><span class="row-text"><b>Remove ${esc(p.name)}?</b><small>It disconnects from this PC; pair again any time.</small></span>
-          <button class="btn" data-no>Cancel</button><button class="btn accent" data-yes>Remove</button>`;
-        row.after(bar);
-        bar.onclick = async ev2 => {
-          if (ev2.target.closest("[data-yes]")) { await api("/api/device", { op: "forget", id }); toast(`${p.name} removed`); }
-          if (ev2.target.closest("[data-yes],[data-no]")) { bar.remove(); delete row.dataset.confirm; }
-        };
-      }
+      if (it.dataset.m === "forget") { forgetAsk = id; renderPhones(state); }
     };
     setTimeout(() => document.addEventListener("click", () => m.remove(), { once: true }), 0);
   }
