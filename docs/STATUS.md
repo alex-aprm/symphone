@@ -1,6 +1,6 @@
 # Symphone — status and roadmap
 
-Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.9.0** (Windows app and phone app 2.9.0, versionCode 20).
+Every request so far, what was built, how far it is verified, and what is planned next. Updated for **2.9.1** (Windows app and phone app 2.9.1, versionCode 21).
 
 Legend: ✅ done and verified on the real phone (nubia Z80 Ultra, Android 16) · ☑️ done, verified on the emulator or
 partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possible as asked (why, and what was done instead).
@@ -59,6 +59,12 @@ partly · 🔬 done, not verified yet (needs a hands-on test) · ⛔ not possibl
 | Test from zero to a paired app | ✅ | Fresh install from the CI installer with empty data, wiped emulator: sideloaded APK → QR pairing → required permissions through the phone's own screens → casting, quick settings and lock from the PC, all without adb. |
 | Remove the need for debugging | ✅ | Accessibility service (touch, keys, typing, lock, PIN unlock once), screen casting, the app's own camera / audio streams, quick settings via special permissions, "Send clipboard" tile. Wireless debugging is an optional extra for app windows while the phone is locked and call audio (Android allows hidden displays only to system/partner apps). |
 | QR code cut in the wizard | ✅ | Fixed in 2.7.1 (QR SVGs scale). |
+
+## 2.9.1
+
+| Request | Status | Notes |
+|---|---|---|
+| Direct Wi-Fi link only when the PC is seen over BLE | ✅ | While its Wi-Fi Direct network is up the PC advertises a BLE beacon (manufacturer data 0xFFFF: "SY" + hash of its id). A phone that has been off Wi-Fi for 30 s scans for it (filtered, low power, new *Nearby devices* scan permission — granted without a prompt where Nearby devices already was) and asks Android to join only after seeing its main PC. Verified: Wi-Fi off, no beacon → scanning, no request; beacon on → seen and requested at once. |
 
 ## 2.9.0
 

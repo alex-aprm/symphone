@@ -14,9 +14,10 @@ import java.util.concurrent.TimeUnit
  * Wi-Fi Direct link. When the PC prefers it (Wfd.prefer) and this phone can stay on its own Wi-Fi at the same time
  * (STA + STA concurrency for local-only connections), the phone keeps the PC's direct network joined all the time:
  * a one-hop link that doesn't depend on the router. Otherwise it is a fallback: the PC hosts a Wi-Fi Direct "legacy" network (SSID + WPA2 passphrase, registered with
- * POST /api/pc/wfd or taken from the pairing QR). When the phone has been on no Wi-Fi at all for a while, the phone
- * requests that network with a WifiNetworkSpecifier (nothing is bound process-wide) and says hello to the PC at
- * 192.168.137.1:47801 over it. Released as soon as the LAN works again.
+ * POST /api/pc/wfd or taken from the pairing QR). When the phone is on no Wi-Fi and sees that PC nearby over BLE
+ * (the PC advertises while its direct network is up), the phone requests that network with a WifiNetworkSpecifier
+ * (nothing is bound process-wide) and says hello to the PC at 192.168.137.1:47801 over it. Released as soon as the
+ * LAN works again.
  *
  * Such a request opens Android's "choose a device" dialog over whatever is on screen, and cancelling it shows
  * "Something came up". So it is never made just because hellos failed while the phone is on Wi-Fi (that happens
@@ -28,7 +29,7 @@ object WfdClient {
     private const val JOIN_TIMEOUT = 45_000L
     private const val BACKOFF = 10 * 60_000L
     /** How long the phone must be off Wi-Fi before it looks for the PC's direct network by itself. */
-    private const val NO_WIFI_GRACE = 2 * 60_000L
+    private const val NO_WIFI_GRACE = 30_000L
 
     @Volatile var network: Network? = null
         private set
@@ -68,20 +69,21 @@ object WfdClient {
     @Synchronized
     fun reevaluate() {
         if (joining) return
+        val now = System.currentTimeMillis()
+        if (Arrival.wifiNetwork != null) { noWifiSince = 0; autoTried = false }
+        else if (noWifiSince == 0L) noWifiSince = now
+        val offWifi = noWifiSince != 0L && now - noWifiSince >= NO_WIFI_GRACE
+        Ble.scanForPcs(offWifi && callback == null && !autoTried && Pcs.master?.wfd != null)
         if (callback != null) {
             // Holding a direct link: keep it while the PC it is for still has creds (LAN success calls lanOk()).
             val held = Pcs.byId(pcId)
             if (held == null || held.wfd == null) release("pc gone or no wfd")
             return
         }
-        val now = System.currentTimeMillis()
-        if (Arrival.wifiNetwork != null) { noWifiSince = 0; autoTried = false }
-        else if (noWifiSince == 0L) noWifiSince = now
         val m = Pcs.master
         val w = m?.wfd ?: return
-        val noLan = noWifiSince != 0L && now - noWifiSince >= NO_WIFI_GRACE && !autoTried
         if (preferred(w) && now - failedAt > BACKOFF) request(w, m.id)
-        else if (noLan) { autoTried = true; request(w, m.id) }
+        else if (offWifi && !autoTried && Ble.pcNearby(m.id)) { autoTried = true; request(w, m.id) }
     }
 
     /** The regular LAN path to the master works: drop the direct link (unless it is the preferred one). */

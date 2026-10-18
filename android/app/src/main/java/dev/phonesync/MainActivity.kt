@@ -108,6 +108,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         clipSwitch.isChecked = Hub.clipShare
+        // Nearby devices was granted before scanning was added: the new permission is in the same group, so
+        // Android grants it without asking
+        if (Build.VERSION.SDK_INT >= 31 && Ble.hasPermissions() && !Ble.canScan())
+            requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_SCAN), 31)
         handler.removeCallbacks(ticker)
         handler.post(ticker)
     }

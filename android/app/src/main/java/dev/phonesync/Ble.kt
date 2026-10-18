@@ -13,6 +13,10 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -79,6 +83,62 @@ object Ble {
             ctx.checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED &&
                 ctx.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         } else true
+    }
+
+    /** Scanning for PCs (Android 12+: BLUETOOTH_SCAN; Android 11 would need location, which we don't ask for). */
+    fun canScan(): Boolean = Build.VERSION.SDK_INT >= 31 &&
+        Hub.ctx.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+
+    /** A PC advertises this (manufacturer data, company 0xFFFF: "SY" + SHA-256(PC id)[0..6]) while its Wi-Fi
+     *  Direct network is up. */
+    private const val PC_COMPANY = 0xFFFF
+    private val PC_MAGIC = byteArrayOf('S'.code.toByte(), 'Y'.code.toByte())
+    private val pcsSeen = ConcurrentHashMap<String, Long>()          // hash -> last sighting
+    @Volatile private var scanning = false
+
+    private fun pcHash(id: String) = MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+        .copyOfRange(0, 6).joinToString("") { "%02x".format(it) }
+
+    /** [pcId]'s direct network was seen nearby over BLE within [withinMs]. */
+    fun pcNearby(pcId: String, withinMs: Long = 90_000): Boolean =
+        pcsSeen[pcHash(pcId)]?.let { System.currentTimeMillis() - it < withinMs } == true
+
+    /** Looks for PCs' beacons while [on] (filtered, low power: keeps running with the screen off). */
+    @SuppressLint("MissingPermission")
+    @Synchronized
+    fun scanForPcs(on: Boolean) {
+        if (on == scanning) return
+        try {
+            val sc = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
+            if (on) {
+                if (sc == null || !canScan()) return
+                val f = ScanFilter.Builder().setManufacturerData(PC_COMPANY, PC_MAGIC, byteArrayOf(-1, -1)).build()
+                sc.startScan(listOf(f), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCallback)
+                scanning = true
+                Log.i(TAG, "looking for PCs")
+            } else {
+                scanning = false
+                sc?.stopScan(scanCallback)
+                Log.i(TAG, "stopped looking for PCs")
+            }
+        } catch (e: Exception) { Log.w(TAG, "scan: $e") }
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, r: ScanResult) {
+            val d = r.scanRecord?.getManufacturerSpecificData(PC_COMPANY) ?: return
+            if (d.size < 8 || d[0] != PC_MAGIC[0] || d[1] != PC_MAGIC[1]) return
+            val h = d.copyOfRange(2, 8).joinToString("") { "%02x".format(it) }
+            val prev = pcsSeen.put(h, System.currentTimeMillis())
+            if (prev == null || System.currentTimeMillis() - prev > 30_000) {
+                Log.i(TAG, "PC $h nearby")
+                Arrival.handler.post { WfdClient.reevaluate() }
+            }
+        }
+        override fun onScanFailed(errorCode: Int) {
+            Log.w(TAG, "scan failed $errorCode")
+            scanning = false
+        }
     }
 
     val supported: Boolean

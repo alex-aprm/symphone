@@ -6,7 +6,9 @@ unknown Symphone phone is paired over GATT (AES-GCM with a key derived from the 
 
 Wi-Fi Direct: when a paired phone is nearby (BLE) but unreachable over the LAN, or while pairing, the PC hosts a
 WPA2 "legacy" Wi-Fi Direct network (DIRECT-PS-xxxx) next to its normal Wi-Fi connection. The phone knows the
-credentials (QR code / POST /api/pc/wfd) and joins it when it can't reach the PC otherwise.
+credentials (QR code / POST /api/pc/wfd) and joins it when it can't reach the PC otherwise. While the network is up
+the PC also advertises over BLE (manufacturer data 0xFFFF: "SY" + SHA-256(PC id)[:6]): a phone off Wi-Fi only asks
+Android to join the network (which opens a system dialog) once it sees its PC that way.
 """
 import asyncio
 import hashlib
@@ -24,6 +26,10 @@ SVC = "5e7c0001-9b0d-4c55-9e6a-50a0c3e7d6a1"
 CH_INFO = "5e7c0002-9b0d-4c55-9e6a-50a0c3e7d6a1"
 CH_PAIR_REQ = "5e7c0003-9b0d-4c55-9e6a-50a0c3e7d6a1"
 CH_PAIR_RES = "5e7c0004-9b0d-4c55-9e6a-50a0c3e7d6a1"
+
+
+BEACON_COMPANY = 0xFFFF
+BEACON_MAGIC = b"SY"
 
 
 def _hash6(dev_id: str) -> bytes:
@@ -45,6 +51,7 @@ class Nearby:
         self._publisher = None
         self._pairing_tried: set[str] = set()
         self._scanner = None
+        self._beacon = None             # BLE advertisement: "this PC's direct network is up"
 
     def status(self):
         now = time.time()
@@ -188,11 +195,39 @@ class Nearby:
             self._publisher = p
             self.wfd_state = "on"
             log.info("Wi-Fi Direct network %s up", c["ssid"])
+            self._start_beacon()
         except Exception as e:
             self.wfd_state, self.wfd_error = "unavailable", str(e)
             log.info("Wi-Fi Direct unavailable: %s", e)
 
+    def _start_beacon(self):
+        try:
+            from winrt.windows.devices.bluetooth.advertisement import (BluetoothLEAdvertisementPublisher,
+                                                                       BluetoothLEManufacturerData)
+            from winrt.windows.storage.streams import DataWriter
+            w = DataWriter()
+            w.write_bytes(BEACON_MAGIC + _hash6(settings["pc_id"]))
+            md = BluetoothLEManufacturerData()
+            md.company_id = BEACON_COMPANY
+            md.data = w.detach_buffer()
+            b = BluetoothLEAdvertisementPublisher()
+            b.advertisement.manufacturer_data.append(md)
+            b.start()
+            self._beacon = b
+            log.info("BLE beacon on")
+        except Exception as e:
+            log.info("BLE beacon unavailable: %s", e)
+
+    def _stop_beacon(self):
+        if self._beacon is not None:
+            try:
+                self._beacon.stop()
+            except Exception:
+                pass
+            self._beacon = None
+
     def stop_wfd(self):
+        self._stop_beacon()
         if self._publisher is not None:
             try:
                 self._publisher.stop()

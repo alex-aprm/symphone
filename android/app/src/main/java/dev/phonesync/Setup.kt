@@ -64,7 +64,7 @@ object Setup {
             false, CALLS.all { granted(ctx, it) }, deniedHint(ctx, "calls"))
         if (Build.VERSION.SDK_INT >= 31 && Ble.supported)
             out += Item("nearby", "Nearby devices", "Finds your PC over Bluetooth, even before Wi-Fi connects",
-                false, Ble.hasPermissions(), deniedHint(ctx, "nearby"))
+                false, Ble.hasPermissions() && Ble.canScan(), deniedHint(ctx, "nearby"))
         vendorHint()?.let { out += Item("autostart", "Allow auto-launch", "Your phone's maker can stop apps in the background",
             false, null, it, action = "Open settings") }
         val wd = wirelessDebugging(ctx)
@@ -107,7 +107,8 @@ object Setup {
             }
             "calls" -> runtime(a, id, CALLS)
             "nearby" -> if (Build.VERSION.SDK_INT >= 31)
-                runtime(a, id, arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT))
+                runtime(a, id, arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN))
             "notif_access" -> {
                 if (restricted(a) && nextIsAppInfo()) { prefs.edit().putString("notifLast", "appinfo").apply(); appInfo(); return }
                 prefs.edit().putBoolean("notifTried", true).putString("notifLast", "listener").apply()
